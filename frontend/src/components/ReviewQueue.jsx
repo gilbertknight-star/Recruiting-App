@@ -14,7 +14,7 @@ const TIER_NOTICE = {
   md_partner: { color: '#c084fc', text: 'Manual send only — approve the draft here' },
 }
 
-export default function ReviewQueue({ contacts, onClose, onSaved }) {
+export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
   const [index, setIndex] = useState(0)
   const [drafts, setDrafts] = useState(
     Object.fromEntries(contacts.map(c => [c.id, { subject: c.generated_subject || '', body: c.generated_email || '' }]))
@@ -72,7 +72,7 @@ export default function ReviewQueue({ contacts, onClose, onSaved }) {
               {index + 1} of {total}
             </span>
           </div>
-          <button className="btn-secondary btn-sm" onClick={onClose}>✕</button>
+          <button className="btn-secondary btn-sm" onClick={onCancel || onClose}>✕</button>
         </div>
 
         {/* Progress dots */}

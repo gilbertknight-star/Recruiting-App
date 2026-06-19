@@ -51,6 +51,19 @@ export default function Contacts() {
     }
   }
 
+  function downloadTemplate() {
+    const headers = ['Name', 'Email', 'Title', 'Firm', 'LinkedIn URL', 'School', 'Location', 'Notes']
+    const example = ['Jane Smith', 'jsmith@blackstone.com', 'Vice President', 'Blackstone', 'https://linkedin.com/in/jsmith', 'University of Oregon', 'New York, NY', 'Met at info session']
+    const csv = [headers, example].map(r => r.map(v => `"${v}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'contacts_template.csv'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function handleAddContact(form) {
     if (editContact) {
       await patchContact(editContact.id, form)
@@ -171,6 +184,10 @@ export default function Contacts() {
       {reviewQueue && (
         <ReviewQueue
           contacts={reviewQueue}
+          onCancel={() => {
+            setReviewQueue(null)
+            setSendAfterReview(false)
+          }}
           onClose={async () => {
             setReviewQueue(null)
             if (sendAfterReview) {
@@ -205,6 +222,9 @@ export default function Contacts() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>Contacts <span style={{ color: 'var(--muted)', fontSize: 14, fontWeight: 400 }}>({contacts.length})</span></h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={downloadTemplate} style={{ fontSize: 13 }}>
+            ↓ Download Template
+          </button>
           <label className="btn-secondary" style={{ cursor: 'pointer', padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 13, fontWeight: 500, border: '1px solid var(--border)', background: 'var(--surface2)' }}>
             {loading ? 'Importing…' : 'Bulk Import CSV'}
             <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleUpload} />
@@ -256,18 +276,24 @@ export default function Contacts() {
         <table>
           <thead>
             <tr>
-              <th style={{ width: 36 }}>
-                <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0} onChange={toggleAll} />
+              <th style={{ width: 44, textAlign: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={selected.size === filtered.length && filtered.length > 0}
+                  onChange={toggleAll}
+                  title="Select all"
+                  style={{ cursor: 'pointer' }}
+                />
               </th>
-              <th>Name</th>
-              <th>Title / Firm</th>
-              <th>Tier</th>
-              <th>Status</th>
-              <th>Sent</th>
-              <th>Follow-up Due</th>
-              <th>Meeting Time</th>
-              <th>Draft</th>
-              <th></th>
+              <th style={{ minWidth: 140 }}>Name</th>
+              <th style={{ minWidth: 160 }}>Title / Firm</th>
+              <th style={{ minWidth: 100 }}>Tier</th>
+              <th style={{ minWidth: 140 }}>Status</th>
+              <th style={{ minWidth: 110 }}>Sent</th>
+              <th style={{ minWidth: 110 }}>Follow-up Due</th>
+              <th style={{ minWidth: 130 }}>Meeting Time</th>
+              <th style={{ minWidth: 100 }}>Draft</th>
+              <th style={{ width: 64, textAlign: 'center' }}>Delete</th>
             </tr>
           </thead>
           <tbody>
@@ -283,7 +309,7 @@ export default function Contacts() {
             )}
             {filtered.map(c => (
               <tr key={c.id}>
-                <td><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} /></td>
+                <td style={{ textAlign: 'center' }}><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} style={{ cursor: 'pointer' }} /></td>
                 <td>
                   <div style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditContact(c)}>{c.name}</div>
                   <div style={{ color: 'var(--muted)', fontSize: 12 }}>{c.email}</div>
@@ -301,13 +327,13 @@ export default function Contacts() {
                     {STATUSES.map(s => <option key={s}>{s}</option>)}
                   </select>
                 </td>
-                <td style={{ color: 'var(--muted)', fontSize: 12 }}>
+                <td style={{ color: 'var(--muted)' }}>
                   {c.sent_at ? new Date(c.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
                 </td>
-                <td style={{ fontSize: 12, color: c.follow_up_due && new Date(c.follow_up_due + 'T12:00:00') <= new Date() ? 'var(--yellow)' : 'var(--muted)' }}>
+                <td style={{ color: c.follow_up_due && new Date(c.follow_up_due + 'T12:00:00') <= new Date() ? 'var(--yellow)' : 'var(--muted)' }}>
                   {c.follow_up_due || '—'}
                 </td>
-                <td style={{ fontSize: 12 }}>
+                <td>
                   {c.status === 'Meeting Scheduled'
                     ? <button
                         className="btn-secondary btn-sm"
@@ -319,7 +345,7 @@ export default function Contacts() {
                           : '+ Set Time'
                         }
                       </button>
-                    : <span style={{ color: 'var(--muted)' }}>—</span>
+                    : <span style={{ color: 'var(--muted)', paddingLeft: 10 }}>—</span>
                   }
                 </td>
                 <td>
@@ -333,8 +359,16 @@ export default function Contacts() {
                       }}>Generate</button>
                   }
                 </td>
-                <td>
-                  <button className="btn-danger btn-sm" onClick={() => handleDelete(c.id)}>✕</button>
+                <td style={{ textAlign: 'center' }}>
+                  <button
+                    onClick={() => handleDelete(c.id)}
+                    title="Delete contact"
+                    style={{ background: 'none', border: '1px solid var(--border)', cursor: 'pointer', color: 'var(--muted)', padding: '2px 8px', borderRadius: 6, fontSize: 12, lineHeight: '18px', transition: 'color 0.15s, border-color 0.15s' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >
+                    ✕
+                  </button>
                 </td>
               </tr>
             ))}
