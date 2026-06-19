@@ -158,24 +158,29 @@ export default function Calendar() {
           {view === 'month' ? `${MONTHS[month]} ${year}` : weekLabel}
         </span>
 
-        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ fontSize: 13, padding: '5px 10px' }}>
-          <option value="">All Seniority</option>
-          <option value="analyst_associate">Analyst / Associate</option>
-          <option value="vp">VP / Director</option>
-          <option value="md_partner">MD / Partner</option>
-          <option value="n_a">N/A</option>
-        </select>
+        <ToggleGroup
+          value={filterTier}
+          onChange={setFilterTier}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'analyst_associate', label: 'Analyst' },
+            { value: 'vp', label: 'VP' },
+            { value: 'md_partner', label: 'MD' },
+          ]}
+        />
 
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '5px 10px' }}>
-          <option value="">All Stages</option>
-          {['Cold','Contacted','Replied','Warm','Meeting Scheduled','Referral'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-
-        {(filterTier || filterStatus) && (
-          <button onClick={() => { setFilterTier(''); setFilterStatus('') }} style={{ ...toolBtn, color: 'var(--muted)', fontSize: 12 }}>✕ Clear</button>
-        )}
+        <ToggleGroup
+          value={filterStatus}
+          onChange={setFilterStatus}
+          options={[
+            { value: '', label: 'All' },
+            { value: 'Contacted', label: 'Contacted' },
+            { value: 'Replied', label: 'Replied' },
+            { value: 'Warm', label: 'Warm' },
+            { value: 'Meeting Scheduled', label: 'Meeting' },
+            { value: 'Referral', label: 'Referral' },
+          ]}
+        />
 
         <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--surface2)', borderRadius: 8, padding: 3, gap: 2 }}>
           {['month', 'week'].map(v => (
@@ -423,6 +428,24 @@ function EventCard({ event, compact }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ToggleGroup({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 8, padding: 3, gap: 2 }}>
+      {options.map(o => (
+        <button key={o.value} onClick={() => onChange(o.value)} style={{
+          ...toolBtn, border: 'none', fontSize: 12,
+          background: value === o.value ? 'var(--surface)' : 'transparent',
+          color: value === o.value ? 'var(--text)' : 'var(--muted)',
+          boxShadow: value === o.value ? '0 1px 3px rgba(0,0,0,0.3)' : 'none',
+          padding: '4px 10px',
+        }}>
+          {o.label}
+        </button>
+      ))}
     </div>
   )
 }
