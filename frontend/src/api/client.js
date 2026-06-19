@@ -28,6 +28,7 @@ export const patchContact = (id, updates) => api.patch(`/contacts/${id}`, update
 export const deleteContact = (id) => api.delete(`/contacts/${id}`).then(r => r.data)
 
 export const generateEmail = (id) => api.post(`/generate/${id}`).then(r => r.data)
+export const composeEmail = (prompt, context) => api.post('/compose', { prompt, context }).then(r => r.data)
 export const generateBatch = () => api.post('/generate/batch').then(r => r.data)
 
 export const sendEmails = (contactIds, scheduledTime = null) =>

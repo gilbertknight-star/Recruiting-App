@@ -2,13 +2,6 @@ import { useState } from 'react'
 import { generateEmail, patchContact } from '../api/client'
 import TierBadge from './TierBadge'
 
-const TIER_LABELS = {
-  analyst_associate: 'Analyst / Associate',
-  vp: 'VP / Director',
-  md_partner: 'MD / Partner',
-  n_a: 'N/A',
-}
-
 const TIER_NOTICE = {
   vp: { color: '#eab308', text: 'Review required before sending' },
   md_partner: { color: '#c084fc', text: 'Manual send only — approve the draft here' },
@@ -26,6 +19,7 @@ export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
   const draft = drafts[contact.id]
   const total = contacts.length
   const notice = TIER_NOTICE[contact.tier]
+  const allSaved = contacts.every(c => saved.has(c.id))
 
   function setDraft(id, key, val) {
     setDrafts(prev => ({ ...prev, [id]: { ...prev[id], [key]: val } }))
@@ -54,33 +48,35 @@ export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
     }
   }
 
-  function goTo(i) {
-    setIndex(i)
-  }
-
-  const allSaved = contacts.every(c => saved.has(c.id))
-
   return (
     <div style={overlay}>
       <div style={modal}>
 
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontWeight: 700, fontSize: 15 }}>Email Review</span>
-            <span style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--surface2)', borderRadius: 99, padding: '2px 10px' }}>
-              {index + 1} of {total}
-            </span>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontWeight: 700, fontSize: 16 }}>Email Review</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--surface2)', borderRadius: 99, padding: '2px 10px' }}>
+                {index + 1} of {total}
+              </span>
+            </div>
+            <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 2 }}>
+              {contact.name} · {contact.title} · {contact.firm}
+            </div>
           </div>
-          <button className="btn-secondary btn-sm" onClick={onCancel || onClose}>✕</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <TierBadge tier={contact.tier} />
+            <button className="btn-secondary btn-sm" onClick={onCancel || onClose}>✕</button>
+          </div>
         </div>
 
-        {/* Progress dots */}
+        {/* Progress bar */}
         <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
           {contacts.map((c, i) => (
             <button
               key={c.id}
-              onClick={() => goTo(i)}
+              onClick={() => setIndex(i)}
               title={c.name}
               style={{
                 flex: 1, height: 4, borderRadius: 99, border: 'none', cursor: 'pointer', padding: 0,
@@ -91,45 +87,48 @@ export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
           ))}
         </div>
 
-        {/* Contact info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 600, fontSize: 15 }}>{contact.name}</div>
-            <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 2 }}>{contact.title} · {contact.firm}</div>
-          </div>
-          <TierBadge tier={contact.tier} />
-        </div>
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 20 }} />
 
         {/* Tier notice */}
         {notice && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: `${notice.color}18`, border: `1px solid ${notice.color}40`, borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: notice.color, fontWeight: 500 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: `${notice.color}18`, border: `1px solid ${notice.color}40`, borderRadius: 8, padding: '8px 12px', marginBottom: 16, fontSize: 12, color: notice.color, fontWeight: 500 }}>
             <span>⚠</span> {notice.text}
           </div>
         )}
 
         {/* Subject */}
-        <label style={lbl}>Subject</label>
-        <input
-          value={draft.subject}
-          onChange={e => setDraft(contact.id, 'subject', e.target.value)}
-          style={{ marginBottom: 12 }}
-        />
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Subject</label>
+          <input
+            value={draft.subject}
+            onChange={e => setDraft(contact.id, 'subject', e.target.value)}
+            style={{ fontSize: 14, fontWeight: 500 }}
+          />
+        </div>
 
         {/* Body */}
-        <label style={lbl}>Email Body</label>
-        <textarea
-          value={draft.body}
-          onChange={e => setDraft(contact.id, 'body', e.target.value)}
-          rows={11}
-          style={{ marginBottom: 16, resize: 'vertical' }}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Email Body</label>
+          <textarea
+            value={draft.body}
+            onChange={e => setDraft(contact.id, 'body', e.target.value)}
+            rows={16}
+            style={{
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              fontSize: 14,
+              lineHeight: 1.7,
+              padding: '12px 14px',
+            }}
+          />
+        </div>
 
         {/* Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn-secondary" onClick={handleRegenerate} disabled={regenerating}>
-            {regenerating ? 'Regenerating…' : 'Regenerate'}
+            {regenerating ? 'Generating…' : 'Regenerate'}
           </button>
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {index > 0 && (
               <button className="btn-secondary" onClick={() => setIndex(i => i - 1)}>← Back</button>
             )}
@@ -141,6 +140,7 @@ export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
             </button>
           </div>
         </div>
+
       </div>
     </div>
   )
@@ -152,6 +152,7 @@ const overlay = {
 }
 const modal = {
   background: 'var(--surface)', border: '1px solid var(--border)',
-  borderRadius: 12, padding: 28, width: 660, maxHeight: '92vh', overflowY: 'auto',
+  borderRadius: 12, padding: 32, width: 780, maxWidth: '95vw',
+  maxHeight: '92vh', overflowY: 'auto',
 }
-const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 4, fontWeight: 500 }
+const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, fontWeight: 500, marginBottom: 6 }

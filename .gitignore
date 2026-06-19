@@ -4,6 +4,7 @@ backend/__pycache__/
 backend/*.pyc
 backend/.env
 backend/token.json
+backend/dev_token.json
 
 # Sensitive credentials - NEVER commit these
 backend/credentials.json

@@ -13,7 +13,7 @@ from contacts import (
     bulk_upsert_contacts, parse_csv, get_settings, update_settings,
     get_templates, update_template, get_stats, increment_sent,
 )
-from email_gen import generate_email, generate_batch
+from email_gen import generate_email, generate_batch, compose_free
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
     is_gmail_connected, rate_limited_send, scan_replies,
@@ -125,6 +125,15 @@ def generate_for_contact(contact_id: str, user=Depends(get_current_user)):
     result = generate_email(contact, templates, settings)
     update_contact(user.id, contact_id, {"generated_email": result["body"], "generated_subject": result["subject"]})
     return result
+
+
+class ComposeRequest(BaseModel):
+    prompt: str
+    context: str = ""
+
+@app.post("/compose")
+def compose_endpoint(req: ComposeRequest, user=Depends(get_current_user)):
+    return compose_free(req.prompt, req.context)
 
 
 @app.post("/generate/batch")

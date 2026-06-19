@@ -44,7 +44,19 @@ def exchange_code(code: str, user_id: str):
         supabase.table("gmail_tokens").insert({"user_id": user_id, "token_json": token_json}).execute()
 
 
+DEV_TOKEN_FILE = Path(__file__).parent / "dev_token.json"
+
 def get_gmail_service(user_id: str):
+    if DEV_MODE:
+        if not DEV_TOKEN_FILE.exists():
+            raise Exception("Dev Gmail token not found. Run setup_dev_gmail.py to authorize.")
+        token_data = json.loads(DEV_TOKEN_FILE.read_text())
+        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+            DEV_TOKEN_FILE.write_text(creds.to_json())
+        return build("gmail", "v1", credentials=creds)
+
     res = supabase.table("gmail_tokens").select("token_json").eq("user_id", user_id).execute()
     if not res.data:
         raise Exception("Gmail not connected. Please authorize Gmail in Settings.")
@@ -113,9 +125,24 @@ def scan_replies(service, contacts: list[dict]) -> list[dict]:
     return updated
 
 
+DEV_REDIRECT_EMAIL = os.getenv("ADMIN_EMAIL", "gilbert.knight@gmail.com")
+
 def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0) -> list[dict]:
     if DEV_MODE:
-        return [{"id": e["id"], "success": True, "message_id": "dev-msg", "thread_id": "dev-thread", "dev": True} for e in emails]
+        results = []
+        for email in emails:
+            try:
+                result = send_email(
+                    service=service,
+                    to=DEV_REDIRECT_EMAIL,
+                    subject=f"[DEV → {email.get('to', '?')}] {email['subject']}",
+                    body=f"--- DEV MODE: would send to {email.get('to', '?')} ---\n\n{email['body']}",
+                    firm=email.get("firm", ""),
+                )
+                results.append({"id": email["id"], "success": True, **result, "dev": True})
+            except Exception as e:
+                results.append({"id": email["id"], "success": False, "error": str(e)})
+        return results
 
     results = []
     sent_this_batch = 0

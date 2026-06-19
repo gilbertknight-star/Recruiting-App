@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact } from '../api/client'
+import { getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings } from '../api/client'
 import TierBadge from '../components/TierBadge'
 import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
@@ -34,10 +34,14 @@ export default function Contacts() {
   const [msg, setMsg] = useState('')
   const [meetingContact, setMeetingContact] = useState(null)
   const [reviewQueue, setReviewQueue] = useState(null)
-  const [reviewed, setReviewed] = useState(new Set()) // contact ids approved through review queue
+  const [reviewed, setReviewed] = useState(new Set())
   const [sendAfterReview, setSendAfterReview] = useState(false)
+  const [tierRules, setTierRules] = useState({})
 
-  useEffect(() => { loadContacts() }, [])
+  useEffect(() => {
+    loadContacts()
+    getSettings().then(s => setTierRules(s?.tier_rules || {})).catch(() => {})
+  }, [])
   useEffect(() => {
     sessionStorage.setItem('contactSelection', JSON.stringify([...selected]))
   }, [selected])
@@ -91,21 +95,37 @@ export default function Contacts() {
     }
   }
 
+  function autosendTier(tier) {
+    return tierRules[tier]?.drafts === 'No'
+  }
+
   async function handleGenerateSelected() {
     setLoading(true)
     setMsg('')
-    const generated = []
+    const drafted = []
+    const autoSentIds = []
     for (const id of selected) {
       try {
-        const result = await generateEmail(id)
         const contact = contacts.find(c => c.id === id)
+        const result = await generateEmail(id)
         const updated = { ...contact, generated_email: result.body, generated_subject: result.subject }
         setContacts(prev => prev.map(x => x.id === id ? updated : x))
-        generated.push(updated)
+        if (autosendTier(contact.tier)) {
+          autoSentIds.push(id)
+        } else {
+          drafted.push(updated)
+        }
       } catch {}
     }
+    if (autoSentIds.length) {
+      await sendEmails(autoSentIds)
+      await loadContacts()
+    }
     setLoading(false)
-    setMsg(`Generated ${generated.length} email${generated.length !== 1 ? 's' : ''}`)
+    const parts = []
+    if (drafted.length) parts.push(`${drafted.length} draft${drafted.length !== 1 ? 's' : ''} ready to review`)
+    if (autoSentIds.length) parts.push(`${autoSentIds.length} auto-sent`)
+    setMsg(parts.join(' · '))
   }
 
   async function executeSend() {
@@ -355,7 +375,12 @@ export default function Contacts() {
                         const r = await generateEmail(c.id)
                         const updated = { ...c, generated_email: r.body, generated_subject: r.subject }
                         setContacts(prev => prev.map(x => x.id === c.id ? updated : x))
-                        setPreview(updated)
+                        if (autosendTier(c.tier)) {
+                          await sendEmails([c.id])
+                          await loadContacts()
+                        } else {
+                          setPreview(updated)
+                        }
                       }}>Generate</button>
                   }
                 </td>

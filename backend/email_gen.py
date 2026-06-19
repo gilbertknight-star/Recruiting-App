@@ -9,12 +9,27 @@ client = anthropic.Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 
 def build_prompt(contact: dict, template: dict, settings: dict) -> str:
     first_name = contact["name"].strip().split()[0]
+
     availability = settings.get("availability", "").strip()
-    availability_line = f"\n\nI am generally available {availability}." if availability else ""
+    availability_line = f"I am generally available {availability}." if availability else ""
+
+    school = contact.get("school", "").strip()
+    school_line = f"I am a student at {school}." if school else ""
+
+    notes = contact.get("notes", "").strip()
+    notes_line = notes if notes else ""
+
+    location = contact.get("location", "").strip()
+    location_line = f"They are based in {location}." if location else ""
+
     return template["prompt"].format(
         name=first_name,
         firm=contact["firm"],
+        title=contact.get("title", "").strip(),
+        school_line=school_line,
+        notes_line=notes_line,
         availability_line=availability_line,
+        location_line=location_line,
     )
 
 
@@ -30,6 +45,19 @@ def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
         messages=[{"role": "user", "content": prompt}],
     )
     return {"subject": template["subject"], "body": message.content[0].text.strip()}
+
+
+def compose_free(prompt: str, context: str) -> dict:
+    full_prompt = f"{prompt.strip()}"
+    if context.strip():
+        full_prompt = f"Context about the recipient: {context.strip()}\n\n{prompt.strip()}"
+    full_prompt += "\n\nWrite only the email body — no subject line, no extra commentary."
+    message = client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=500,
+        messages=[{"role": "user", "content": full_prompt}],
+    )
+    return {"body": message.content[0].text.strip()}
 
 
 def generate_batch(contacts: list[dict], templates: dict, settings: dict) -> list[dict]:

@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { generateEmail, patchContact } from '../api/client'
+import TierBadge from './TierBadge'
 
 export default function EmailPreview({ contact, onClose, onSaved }) {
   const [subject, setSubject] = useState(contact.generated_subject || '')
   const [body, setBody] = useState(contact.generated_email || '')
   const [loading, setLoading] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   async function regenerate() {
     setLoading(true)
@@ -12,6 +14,7 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
       const result = await generateEmail(contact.id)
       setSubject(result.subject)
       setBody(result.body)
+      setSaved(false)
     } finally {
       setLoading(false)
     }
@@ -20,41 +23,79 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
   async function save() {
     await patchContact(contact.id, { generated_email: body, generated_subject: subject })
     onSaved?.({ ...contact, generated_email: body, generated_subject: subject })
-    onClose()
+    setSaved(true)
+    setTimeout(onClose, 600)
   }
 
   return (
     <div style={overlay}>
       <div style={modal}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>Email Preview — {contact.name}</h3>
-          <button className="btn-secondary btn-sm" onClick={onClose}>✕</button>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Edit Draft</div>
+            <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 2 }}>{contact.name} · {contact.title} · {contact.firm}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <TierBadge tier={contact.tier} />
+            <button className="btn-secondary btn-sm" onClick={onClose}>✕</button>
+          </div>
         </div>
 
-        <label style={label}>Subject</label>
-        <input value={subject} onChange={e => setSubject(e.target.value)} style={{ marginBottom: 12 }} />
+        <div style={{ borderTop: '1px solid var(--border)', marginBottom: 20 }} />
 
-        <label style={label}>Body</label>
-        <textarea value={body} onChange={e => setBody(e.target.value)}
-          rows={10} style={{ marginBottom: 16, resize: 'vertical' }} />
+        {/* Subject */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={lbl}>Subject</label>
+          <input
+            value={subject}
+            onChange={e => { setSubject(e.target.value); setSaved(false) }}
+            style={{ fontSize: 14, fontWeight: 500 }}
+          />
+        </div>
 
-        <div style={{ display: 'flex', gap: 8 }}>
+        {/* Body */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={lbl}>Email Body</label>
+          <textarea
+            value={body}
+            onChange={e => { setBody(e.target.value); setSaved(false) }}
+            rows={16}
+            style={{
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              fontSize: 14,
+              lineHeight: 1.7,
+              padding: '12px 14px',
+            }}
+          />
+        </div>
+
+        {/* Actions */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn-secondary" onClick={regenerate} disabled={loading}>
             {loading ? 'Generating…' : 'Regenerate'}
           </button>
-          <button className="btn-primary" onClick={save}>Save Changes</button>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            {saved && <span style={{ fontSize: 12, color: 'var(--green)' }}>Saved</span>}
+            <button className="btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save}>Save Changes</button>
+          </div>
         </div>
+
       </div>
     </div>
   )
 }
 
 const overlay = {
-  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+  position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)',
   display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
 }
 const modal = {
   background: 'var(--surface)', border: '1px solid var(--border)',
-  borderRadius: 'var(--radius)', padding: 24, width: 600, maxHeight: '90vh', overflowY: 'auto',
+  borderRadius: 12, padding: 32, width: 780, maxWidth: '95vw',
+  maxHeight: '92vh', overflowY: 'auto',
 }
-const label = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 4 }
+const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, fontWeight: 500, marginBottom: 6 }
