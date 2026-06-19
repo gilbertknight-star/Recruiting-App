@@ -144,9 +144,8 @@ export default function Calendar() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
 
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16, flexShrink: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600, marginRight: 8 }}>Calendar</h1>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexShrink: 0, flexWrap: 'wrap' }}>
+        <h1 style={{ fontSize: 20, fontWeight: 600, marginRight: 4 }}>Calendar</h1>
 
         <button onClick={goToday} style={toolBtn}>Today</button>
 
@@ -155,9 +154,28 @@ export default function Calendar() {
           <button onClick={view === 'month' ? nextMonth : nextWeek} style={{ ...toolBtn, borderRadius: '0 6px 6px 0' }}>›</button>
         </div>
 
-        <span style={{ fontWeight: 600, fontSize: 15, minWidth: 200 }}>
+        <span style={{ fontWeight: 600, fontSize: 15, minWidth: 160 }}>
           {view === 'month' ? `${MONTHS[month]} ${year}` : weekLabel}
         </span>
+
+        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ fontSize: 13, padding: '5px 10px' }}>
+          <option value="">All Seniority</option>
+          <option value="analyst_associate">Analyst / Associate</option>
+          <option value="vp">VP / Director</option>
+          <option value="md_partner">MD / Partner</option>
+          <option value="n_a">N/A</option>
+        </select>
+
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '5px 10px' }}>
+          <option value="">All Stages</option>
+          {['Cold','Contacted','Replied','Warm','Meeting Scheduled','Referral'].map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+
+        {(filterTier || filterStatus) && (
+          <button onClick={() => { setFilterTier(''); setFilterStatus('') }} style={{ ...toolBtn, color: 'var(--muted)', fontSize: 12 }}>✕ Clear</button>
+        )}
 
         <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--surface2)', borderRadius: 8, padding: 3, gap: 2 }}>
           {['month', 'week'].map(v => (
@@ -174,7 +192,7 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div style={{ display: 'flex', gap: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px', marginLeft: 8 }}>
+        <div style={{ display: 'flex', gap: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px' }}>
           {Object.values(E).map((e, i) => (
             <div key={e.label} style={{
               display: 'flex', alignItems: 'center', gap: 6,
@@ -187,29 +205,6 @@ export default function Calendar() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* ── Filters ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ fontSize: 13, padding: '5px 10px', width: 160 }}>
-          <option value="">All Seniority</option>
-          <option value="analyst_associate">Analyst / Associate</option>
-          <option value="vp">VP / Director</option>
-          <option value="md_partner">MD / Partner</option>
-          <option value="n_a">N/A</option>
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '5px 10px', width: 170 }}>
-          <option value="">All Stages</option>
-          {['Cold','Contacted','Replied','Warm','Meeting Scheduled','Referral'].map(s => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-        {(filterTier || filterStatus) && (
-          <button onClick={() => { setFilterTier(''); setFilterStatus('') }} style={{ ...toolBtn, color: 'var(--muted)', fontSize: 12 }}>
-            Clear filters
-          </button>
-        )}
-      </div>
       </div>
 
       {/* ── Month View ── */}
