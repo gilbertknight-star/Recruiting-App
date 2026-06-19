@@ -1,7 +1,8 @@
 import base64
+import json
 import os
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -10,8 +11,9 @@ from pathlib import Path
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
+from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from db import supabase
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
@@ -20,25 +22,46 @@ SCOPES = [
 ]
 
 CREDS_FILE = Path(__file__).parent / "credentials.json"
-TOKEN_FILE = Path(__file__).parent / "token.json"
 
 
-def get_gmail_service():
-    creds = None
-    if TOKEN_FILE.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(str(CREDS_FILE), SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open(TOKEN_FILE, "w") as f:
-            f.write(creds.to_json())
+def get_auth_url(user_id: str) -> str:
+    redirect_uri = os.getenv("GMAIL_REDIRECT_URI", "http://localhost:8000/gmail/callback")
+    flow = Flow.from_client_secrets_file(str(CREDS_FILE), scopes=SCOPES, redirect_uri=redirect_uri)
+    auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent", state=user_id)
+    return auth_url
+
+
+def exchange_code(code: str, user_id: str):
+    redirect_uri = os.getenv("GMAIL_REDIRECT_URI", "http://localhost:8000/gmail/callback")
+    flow = Flow.from_client_secrets_file(str(CREDS_FILE), scopes=SCOPES, redirect_uri=redirect_uri)
+    flow.fetch_token(code=code)
+    creds = flow.credentials
+    token_json = creds.to_json()
+    existing = supabase.table("gmail_tokens").select("user_id").eq("user_id", user_id).execute()
+    if existing.data:
+        supabase.table("gmail_tokens").update({"token_json": token_json, "updated_at": datetime.utcnow().isoformat()}).eq("user_id", user_id).execute()
+    else:
+        supabase.table("gmail_tokens").insert({"user_id": user_id, "token_json": token_json}).execute()
+
+
+def get_gmail_service(user_id: str):
+    res = supabase.table("gmail_tokens").select("token_json").eq("user_id", user_id).execute()
+    if not res.data:
+        raise Exception("Gmail not connected. Please authorize Gmail in Settings.")
+    token_data = json.loads(res.data[0]["token_json"])
+    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+    if creds.expired and creds.refresh_token:
+        creds.refresh(Request())
+        supabase.table("gmail_tokens").update({"token_json": creds.to_json(), "updated_at": datetime.utcnow().isoformat()}).eq("user_id", user_id).execute()
     return build("gmail", "v1", credentials=creds)
 
 
-def get_or_create_label(service, label_name: str, parent_id: str = None) -> str:
+def is_gmail_connected(user_id: str) -> bool:
+    res = supabase.table("gmail_tokens").select("user_id").eq("user_id", user_id).execute()
+    return bool(res.data)
+
+
+def get_or_create_label(service, label_name: str) -> str:
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
     for label in labels:
         if label["name"] == label_name:
@@ -48,19 +71,9 @@ def get_or_create_label(service, label_name: str, parent_id: str = None) -> str:
     return created["id"]
 
 
-def send_email(
-    service,
-    to: str,
-    subject: str,
-    body: str,
-    firm: str,
-    sender_name: str,
-    resume_path: str = None,
-    scheduled_time: datetime = None,
-) -> dict:
+def send_email(service, to: str, subject: str, body: str, firm: str, resume_path: str = None, scheduled_time: datetime = None) -> dict:
     recruiting_label_id = get_or_create_label(service, "Recruiting")
-    firm_label_name = f"Recruiting/{firm}" if firm else "Recruiting/Other"
-    firm_label_id = get_or_create_label(service, firm_label_name)
+    firm_label_id = get_or_create_label(service, f"Recruiting/{firm}" if firm else "Recruiting/Other")
 
     msg = MIMEMultipart()
     msg["To"] = to
@@ -77,7 +90,6 @@ def send_email(
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     send_body = {"raw": raw, "labelIds": [recruiting_label_id, firm_label_id]}
-
     if scheduled_time:
         send_body["sendAt"] = scheduled_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -91,22 +103,18 @@ def scan_replies(service, contacts: list[dict]) -> list[dict]:
         if contact["status"] != "Contacted" or not contact.get("gmail_thread_id"):
             continue
         try:
-            thread = service.users().threads().get(
-                userId="me", id=contact["gmail_thread_id"]
-            ).execute()
-            messages = thread.get("messages", [])
-            if len(messages) > 1:
+            thread = service.users().threads().get(userId="me", id=contact["gmail_thread_id"]).execute()
+            if len(thread.get("messages", [])) > 1:
                 updated.append({"id": contact["id"], "status": "Replied", "replied_at": datetime.utcnow().isoformat()})
         except Exception:
             pass
     return updated
 
 
-def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0):
+def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0) -> list[dict]:
     results = []
     sent_this_batch = 0
     interval = 60.0 / per_minute
-
     for email in emails:
         if today_sent + sent_this_batch >= daily_cap:
             results.append({"id": email["id"], "success": False, "error": "Daily cap reached"})
@@ -118,7 +126,6 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
                 subject=email["subject"],
                 body=email["body"],
                 firm=email.get("firm", ""),
-                sender_name=email.get("sender_name", ""),
                 resume_path=email.get("resume_path"),
                 scheduled_time=email.get("scheduled_time"),
             )
@@ -127,5 +134,4 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
             time.sleep(interval)
         except Exception as e:
             results.append({"id": email["id"], "success": False, "error": str(e)})
-
     return results

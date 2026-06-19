@@ -1,15 +1,26 @@
 import axios from 'axios'
+import { supabase } from '../lib/supabase'
 
-const api = axios.create({ baseURL: 'http://localhost:8000' })
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000' })
+
+api.interceptors.request.use(async (config) => {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session?.access_token) {
+    config.headers.Authorization = `Bearer ${session.access_token}`
+  }
+  return config
+})
+
+export const getMe = () => api.get('/me').then(r => r.data)
 
 export const getContacts = () => api.get('/contacts').then(r => r.data)
+export const createContact = (contact) => api.post('/contacts', contact).then(r => r.data)
 export const uploadCSV = (file) => {
   const form = new FormData()
   form.append('file', file)
   return api.post('/contacts/upload', form).then(r => r.data)
 }
 export const patchContact = (id, updates) => api.patch(`/contacts/${id}`, updates).then(r => r.data)
-export const createContact = (contact) => api.post('/contacts', contact).then(r => r.data)
 export const deleteContact = (id) => api.delete(`/contacts/${id}`).then(r => r.data)
 
 export const generateEmail = (id) => api.post(`/generate/${id}`).then(r => r.data)
@@ -24,3 +35,8 @@ export const getSettings = () => api.get('/settings').then(r => r.data)
 export const updateSettings = (updates) => api.patch('/settings', updates).then(r => r.data)
 export const getTemplates = () => api.get('/templates').then(r => r.data)
 export const updateTemplate = (tier, updates) => api.patch(`/templates/${tier}`, updates).then(r => r.data)
+
+export const getGmailAuthUrl = () => api.get('/gmail/auth-url').then(r => r.data)
+export const getGmailStatus = () => api.get('/gmail/status').then(r => r.data)
+
+export const inviteUser = (email) => api.post(`/invite?email=${encodeURIComponent(email)}`).then(r => r.data)

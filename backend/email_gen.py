@@ -1,7 +1,6 @@
 import anthropic
 import os
 from dotenv import load_dotenv
-from contacts import load_data
 
 load_dotenv()
 
@@ -19,31 +18,21 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
     )
 
 
-def build_subject(template: dict) -> str:
-    return template["subject"]
-
-
-def generate_email(contact: dict, templates: dict, settings: dict = None) -> dict:
-    if settings is None:
-        settings = load_data().get("settings", {})
+def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
     tier = contact.get("tier", "analyst_associate")
-    template = templates.get(tier, templates["analyst_associate"])
+    template = templates.get(tier, templates.get("analyst_associate", {}))
+    if not template:
+        raise Exception("No template found for tier")
     prompt = build_prompt(contact, template, settings)
-
     message = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
-
-    body = message.content[0].text.strip()
-    subject = build_subject(template)
-    return {"subject": subject, "body": body}
+    return {"subject": template["subject"], "body": message.content[0].text.strip()}
 
 
-def generate_batch(contacts: list[dict], templates: dict, settings: dict = None) -> list[dict]:
-    if settings is None:
-        settings = load_data().get("settings", {})
+def generate_batch(contacts: list[dict], templates: dict, settings: dict) -> list[dict]:
     results = []
     for contact in contacts:
         try:

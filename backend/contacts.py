@@ -1,11 +1,8 @@
-import json
 import csv
 import io
 import uuid
 from datetime import date, datetime
-from pathlib import Path
-
-DATA_FILE = Path(__file__).parent / "data" / "contacts.json"
+from db import supabase
 
 TIER_KEYWORDS = {
     "analyst": "analyst_associate",
@@ -24,16 +21,6 @@ TIER_KEYWORDS = {
 STATUS_FLOW = ["Cold", "Contacted", "Replied", "Warm", "Meeting Scheduled", "Closed"]
 
 
-def load_data() -> dict:
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
-
-
-def save_data(data: dict):
-    with open(DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2, default=str)
-
-
 def detect_tier(title: str) -> str:
     title_lower = title.lower()
     for keyword, tier in TIER_KEYWORDS.items():
@@ -42,7 +29,29 @@ def detect_tier(title: str) -> str:
     return "analyst_associate"
 
 
-def parse_csv(content: bytes) -> list[dict]:
+def get_all_contacts(user_id: str) -> list:
+    res = supabase.table("contacts").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    return res.data or []
+
+
+def create_contact(user_id: str, data: dict) -> dict:
+    data["user_id"] = user_id
+    if not data.get("tier"):
+        data["tier"] = detect_tier(data.get("title", ""))
+    res = supabase.table("contacts").insert(data).execute()
+    return res.data[0]
+
+
+def update_contact(user_id: str, contact_id: str, updates: dict) -> dict | None:
+    res = supabase.table("contacts").update(updates).eq("id", contact_id).eq("user_id", user_id).execute()
+    return res.data[0] if res.data else None
+
+
+def delete_contact(user_id: str, contact_id: str):
+    supabase.table("contacts").delete().eq("id", contact_id).eq("user_id", user_id).execute()
+
+
+def parse_csv(content: bytes, user_id: str) -> list[dict]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
     contacts = []
@@ -53,7 +62,7 @@ def parse_csv(content: bytes) -> list[dict]:
             continue
         title = row.get("Title", "").strip()
         contacts.append({
-            "id": str(uuid.uuid4()),
+            "user_id": user_id,
             "name": name,
             "title": title,
             "firm": row.get("Firm", "").strip(),
@@ -64,73 +73,52 @@ def parse_csv(content: bytes) -> list[dict]:
             "notes": row.get("Notes", "").strip(),
             "tier": detect_tier(title),
             "status": "Cold",
-            "sent_at": None,
-            "replied_at": None,
-            "follow_up_due": None,
-            "gmail_thread_id": None,
-            "generated_email": None,
-            "generated_subject": None,
-            "created_at": datetime.utcnow().isoformat(),
         })
     return contacts
 
 
-def get_all_contacts() -> list[dict]:
-    return load_data()["contacts"]
+def bulk_upsert_contacts(user_id: str, contacts: list[dict]) -> dict:
+    if not contacts:
+        return {"added": 0, "skipped": 0}
+    existing_res = supabase.table("contacts").select("email").eq("user_id", user_id).execute()
+    existing_emails = {c["email"] for c in (existing_res.data or [])}
+    new_contacts = [c for c in contacts if c["email"] not in existing_emails]
+    if new_contacts:
+        supabase.table("contacts").insert(new_contacts).execute()
+    return {"added": len(new_contacts), "skipped": len(contacts) - len(new_contacts)}
 
 
-def upsert_contacts(new_contacts: list[dict]) -> dict:
-    data = load_data()
-    existing_emails = {c["email"] for c in data["contacts"]}
-    added = 0
-    for c in new_contacts:
-        if c["email"] not in existing_emails:
-            data["contacts"].append(c)
-            existing_emails.add(c["email"])
-            added += 1
-    save_data(data)
-    return {"added": added, "skipped": len(new_contacts) - added}
+def get_settings(user_id: str) -> dict:
+    res = supabase.table("settings").select("*").eq("user_id", user_id).execute()
+    return res.data[0] if res.data else {}
 
 
-def update_contact(contact_id: str, updates: dict) -> dict | None:
-    data = load_data()
-    for i, c in enumerate(data["contacts"]):
-        if c["id"] == contact_id:
-            data["contacts"][i].update(updates)
-            save_data(data)
-            return data["contacts"][i]
-    return None
+def update_settings(user_id: str, updates: dict) -> dict:
+    res = supabase.table("settings").update(updates).eq("user_id", user_id).execute()
+    return res.data[0] if res.data else {}
 
 
-def get_daily_sent_count() -> int:
-    data = load_data()
+def get_templates(user_id: str) -> dict:
+    res = supabase.table("templates").select("*").eq("user_id", user_id).execute()
+    return {t["tier"]: t for t in (res.data or [])}
+
+
+def update_template(user_id: str, tier: str, updates: dict) -> dict | None:
+    res = supabase.table("templates").update(updates).eq("user_id", user_id).eq("tier", tier).execute()
+    return res.data[0] if res.data else None
+
+
+def get_stats(user_id: str) -> dict:
+    contacts = get_all_contacts(user_id)
+    settings = get_settings(user_id)
     today = date.today().isoformat()
-    if data["stats"]["last_reset_date"] != today:
-        data["stats"]["today_sent"] = 0
-        data["stats"]["last_reset_date"] = today
-        save_data(data)
-    return data["stats"]["today_sent"]
 
+    today_sent = settings.get("today_sent", 0)
+    last_reset = settings.get("last_reset_date")
+    if last_reset != today:
+        supabase.table("settings").update({"today_sent": 0, "last_reset_date": today}).eq("user_id", user_id).execute()
+        today_sent = 0
 
-def increment_sent_count():
-    data = load_data()
-    today = date.today().isoformat()
-    if data["stats"]["last_reset_date"] != today:
-        data["stats"]["today_sent"] = 0
-        data["stats"]["last_reset_date"] = today
-    data["stats"]["today_sent"] += 1
-    data["stats"]["total_sent"] += 1
-    save_data(data)
-
-
-def get_stats() -> dict:
-    data = load_data()
-    contacts = data["contacts"]
-    today = date.today().isoformat()
-    if data["stats"]["last_reset_date"] != today:
-        data["stats"]["today_sent"] = 0
-        data["stats"]["last_reset_date"] = today
-        save_data(data)
     return {
         "total_contacts": len(contacts),
         "cold": sum(1 for c in contacts if c["status"] == "Cold"),
@@ -139,7 +127,18 @@ def get_stats() -> dict:
         "warm": sum(1 for c in contacts if c["status"] == "Warm"),
         "meeting_scheduled": sum(1 for c in contacts if c["status"] == "Meeting Scheduled"),
         "closed": sum(1 for c in contacts if c["status"] == "Closed"),
-        "total_sent": data["stats"]["total_sent"],
-        "today_sent": data["stats"]["today_sent"],
-        "daily_cap": data["settings"]["daily_cap"],
+        "total_sent": settings.get("total_sent", 0),
+        "today_sent": today_sent,
+        "daily_cap": settings.get("daily_cap", 50),
     }
+
+
+def increment_sent(user_id: str):
+    settings = get_settings(user_id)
+    today = date.today().isoformat()
+    today_sent = settings.get("today_sent", 0) if settings.get("last_reset_date") == today else 0
+    supabase.table("settings").update({
+        "today_sent": today_sent + 1,
+        "total_sent": settings.get("total_sent", 0) + 1,
+        "last_reset_date": today,
+    }).eq("user_id", user_id).execute()

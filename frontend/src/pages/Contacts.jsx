@@ -22,8 +22,12 @@ export default function Contacts() {
   useEffect(() => { loadContacts() }, [])
 
   async function loadContacts() {
-    const data = await getContacts()
-    setContacts(data)
+    try {
+      const data = await getContacts()
+      setContacts(data || [])
+    } catch {
+      setContacts([])
+    }
   }
 
   async function handleAddContact(form) {

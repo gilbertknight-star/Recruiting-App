@@ -5,7 +5,7 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [scanning, setScanning] = useState(false)
 
-  useEffect(() => { getStats().then(setStats) }, [])
+  useEffect(() => { getStats().then(setStats).catch(() => setStats({})) }, [])
 
   async function handleScan() {
     setScanning(true)
@@ -18,9 +18,9 @@ export default function Dashboard() {
     }
   }
 
-  if (!stats) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
+  if (!stats || !Object.keys(stats).length) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
 
-  const responseRate = stats.total_sent > 0
+  const responseRate = (stats.total_sent || 0) > 0
     ? ((stats.replied / stats.total_sent) * 100).toFixed(1)
     : '0.0'
 

@@ -16,9 +16,9 @@ export default function EmailStudio() {
 
   useEffect(() => {
     getTemplates().then(t => {
-      setTemplates(t)
-      setDraft(t[activeTier])
-    })
+      setTemplates(t || {})
+      setDraft(t?.[activeTier] || {})
+    }).catch(() => { setTemplates({}); setDraft({}) })
   }, [])
 
   useEffect(() => {
