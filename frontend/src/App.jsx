@@ -24,13 +24,13 @@ function Layout() {
   }, [user?.id])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {devMode && (
         <div style={{ background: '#dc2626', color: '#fff', textAlign: 'center', padding: '6px 0', fontSize: 13, fontWeight: 600, letterSpacing: '0.05em', flexShrink: 0 }}>
           DEV MODE — no data is saved, no emails are sent
         </div>
       )}
-      <div style={{ display: 'flex', flex: 1 }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <nav style={sidebar}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 32, letterSpacing: '-0.3px' }}>
           Recruiting Bot
@@ -69,7 +69,7 @@ function Layout() {
           }
         </div>
       </nav>
-      <main style={{ flex: 1, padding: '32px 28px', maxWidth: 1100, overflowY: 'auto' }}>
+      <main style={{ flex: 1, padding: '32px 28px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />

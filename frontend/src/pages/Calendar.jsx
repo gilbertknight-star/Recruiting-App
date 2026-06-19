@@ -133,7 +133,7 @@ export default function Calendar() {
   })()
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px)', gap: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexShrink: 0 }}>
