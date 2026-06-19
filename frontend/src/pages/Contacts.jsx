@@ -4,6 +4,16 @@ import TierBadge from '../components/TierBadge'
 import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
 import AddContactModal from '../components/AddContactModal'
+import MeetingModal from '../components/MeetingModal'
+
+function formatMeeting(startIso, endIso) {
+  const s = new Date(startIso)
+  const date = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const start = s.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  if (!endIso) return `${date}, ${start}`
+  const end = new Date(endIso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  return `${date}, ${start}–${end}`
+}
 
 const STATUSES = ['Cold', 'Contacted', 'Replied', 'Warm', 'Meeting Scheduled', 'Referral']
 
@@ -18,6 +28,7 @@ export default function Contacts() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
+  const [meetingContact, setMeetingContact] = useState(null)
 
   useEffect(() => { loadContacts() }, [])
 
@@ -132,6 +143,16 @@ export default function Contacts() {
           onSaved={handleAddContact}
         />
       )}
+      {meetingContact && (
+        <MeetingModal
+          contact={meetingContact}
+          onClose={() => setMeetingContact(null)}
+          onSave={async updates => {
+            await patchContact(meetingContact.id, updates)
+            setContacts(prev => prev.map(c => c.id === meetingContact.id ? { ...c, ...updates } : c))
+          }}
+        />
+      )}
       {preview && (
         <EmailPreview
           contact={preview}
@@ -239,16 +260,16 @@ export default function Contacts() {
                 </td>
                 <td style={{ fontSize: 12 }}>
                   {c.status === 'Meeting Scheduled'
-                    ? <input
-                        type="datetime-local"
-                        value={c.meeting_at ? c.meeting_at.slice(0, 16) : ''}
-                        onChange={async e => {
-                          const val = e.target.value
-                          await patchContact(c.id, { meeting_at: val ? new Date(val).toISOString() : null })
-                          setContacts(prev => prev.map(x => x.id === c.id ? { ...x, meeting_at: val ? new Date(val).toISOString() : null } : x))
-                        }}
-                        style={{ fontSize: 11, padding: '3px 6px', width: 160 }}
-                      />
+                    ? <button
+                        className="btn-secondary btn-sm"
+                        onClick={() => setMeetingContact(c)}
+                        style={{ color: c.meeting_at ? '#c084fc' : 'var(--muted)', borderColor: c.meeting_at ? '#c084fc' : undefined }}
+                      >
+                        {c.meeting_at
+                          ? formatMeeting(c.meeting_at, c.meeting_end)
+                          : '+ Set Time'
+                        }
+                      </button>
                     : <span style={{ color: 'var(--muted)' }}>—</span>
                   }
                 </td>

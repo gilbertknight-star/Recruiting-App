@@ -299,12 +299,19 @@ export default function Calendar() {
                   const timedEvents = dayEvents(d).filter(e => e.time && new Date(e.time).getHours() === hour)
                   return (
                     <div key={i} style={{ borderLeft: '1px solid var(--border)', padding: '2px 4px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {timedEvents.map((e, j) => (
-                        <div key={j} style={{ fontSize: 11, borderRadius: 4, padding: '3px 6px', background: e.bg, color: e.color, fontWeight: 500, borderLeft: `3px solid ${e.color}` }}>
-                          <div>{e.contact.name}</div>
-                          <div style={{ opacity: 0.8 }}>{e.contact.title} · {e.contact.firm}</div>
-                        </div>
-                      ))}
+                      {timedEvents.map((e, j) => {
+                        const timeLabel = e.time
+                          ? new Date(e.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) +
+                            (e.contact.meeting_end ? '–' + new Date(e.contact.meeting_end).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '')
+                          : ''
+                        return (
+                          <div key={j} style={{ fontSize: 11, borderRadius: 4, padding: '3px 6px', background: e.bg, color: e.color, fontWeight: 500, borderLeft: `3px solid ${e.color}` }}>
+                            {timeLabel && <div style={{ opacity: 0.75, marginBottom: 1 }}>{timeLabel}</div>}
+                            <div>{e.contact.name}</div>
+                            <div style={{ opacity: 0.8 }}>{e.contact.title} · {e.contact.firm}</div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )
                 })}
