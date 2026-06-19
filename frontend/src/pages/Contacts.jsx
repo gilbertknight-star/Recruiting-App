@@ -122,11 +122,7 @@ export default function Contacts() {
       c.generated_email && (c.tier === 'vp' || c.tier === 'md_partner') && !reviewed.has(c.id)
     )
     if (unreviewedSenior.length > 0) {
-      // force review first, then send automatically after
-      const otherGenerated = selectedContacts.filter(c =>
-        c.generated_email && c.tier !== 'vp' && c.tier !== 'md_partner'
-      )
-      setReviewQueue([...unreviewedSenior, ...otherGenerated])
+      setReviewQueue(unreviewedSenior)
       setSendAfterReview(true)
       return
     }
