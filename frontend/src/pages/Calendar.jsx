@@ -388,15 +388,6 @@ function EventCard({ event, compact }) {
   )
 }
 
-function parseLocalDate(iso) {
-  if (!iso) return null
-  const s = iso.length === 10 ? iso + 'T12:00:00' : iso
-  return new Date(s)
-}
-
-const MONTHS = ['January','February','March','April','May','June',
-                'July','August','September','October','November','December']
-
 const toolBtn = {
   background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 6,
   color: 'var(--text)', cursor: 'pointer', padding: '5px 12px', fontSize: 13, fontWeight: 500,
