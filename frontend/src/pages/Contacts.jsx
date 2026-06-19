@@ -195,6 +195,7 @@ export default function Contacts() {
               <th>Status</th>
               <th>Sent</th>
               <th>Follow-up Due</th>
+              <th>Meeting Time</th>
               <th>Draft</th>
               <th></th>
             </tr>
@@ -202,7 +203,7 @@ export default function Contacts() {
           <tbody>
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ textAlign: 'center', color: 'var(--muted)', padding: 48 }}>
+                <td colSpan={10} style={{ textAlign: 'center', color: 'var(--muted)', padding: 48 }}>
                   {contacts.length === 0
                     ? <span>No contacts yet. <button style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: 14 }} onClick={() => setAddModal(true)}>Add your first contact →</button></span>
                     : 'No contacts match your filters.'
@@ -231,10 +232,25 @@ export default function Contacts() {
                   </select>
                 </td>
                 <td style={{ color: 'var(--muted)', fontSize: 12 }}>
-                  {c.sent_at ? new Date(c.sent_at).toLocaleDateString() : '—'}
+                  {c.sent_at ? new Date(c.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
                 </td>
-                <td style={{ fontSize: 12, color: c.follow_up_due && new Date(c.follow_up_due) <= new Date() ? 'var(--yellow)' : 'var(--muted)' }}>
+                <td style={{ fontSize: 12, color: c.follow_up_due && new Date(c.follow_up_due + 'T12:00:00') <= new Date() ? 'var(--yellow)' : 'var(--muted)' }}>
                   {c.follow_up_due || '—'}
+                </td>
+                <td style={{ fontSize: 12 }}>
+                  {c.status === 'Meeting Scheduled'
+                    ? <input
+                        type="datetime-local"
+                        value={c.meeting_at ? c.meeting_at.slice(0, 16) : ''}
+                        onChange={async e => {
+                          const val = e.target.value
+                          await patchContact(c.id, { meeting_at: val ? new Date(val).toISOString() : null })
+                          setContacts(prev => prev.map(x => x.id === c.id ? { ...x, meeting_at: val ? new Date(val).toISOString() : null } : x))
+                        }}
+                        style={{ fontSize: 11, padding: '3px 6px', width: 160 }}
+                      />
+                    : <span style={{ color: 'var(--muted)' }}>—</span>
+                  }
                 </td>
                 <td>
                   {c.generated_email

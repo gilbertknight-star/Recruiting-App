@@ -45,8 +45,8 @@ function buildEventMap(contacts) {
       add(c.follow_up_due.slice(0, 10), { ...E.followup, contact: c, time: null })
     }
     if (c.status === 'Meeting Scheduled') {
-      const d = parseLocalDate(c.replied_at || c.sent_at)
-      if (d) add(localDateKey(d), { ...E.meeting, contact: c, time: null })
+      const d = c.meeting_at ? new Date(c.meeting_at) : parseLocalDate(c.replied_at || c.sent_at)
+      if (d) add(localDateKey(d), { ...E.meeting, contact: c, time: c.meeting_at ? d : null })
     }
     if (c.status === 'Referral') {
       const d = parseLocalDate(c.replied_at || c.sent_at)

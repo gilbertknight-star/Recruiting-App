@@ -92,6 +92,7 @@ class ContactUpdate(BaseModel):
     tier: Optional[str] = None
     notes: Optional[str] = None
     follow_up_due: Optional[str] = None
+    meeting_at: Optional[str] = None
     generated_email: Optional[str] = None
     generated_subject: Optional[str] = None
 
