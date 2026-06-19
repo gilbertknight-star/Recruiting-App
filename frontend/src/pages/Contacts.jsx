@@ -33,7 +33,9 @@ export default function Contacts() {
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [meetingContact, setMeetingContact] = useState(null)
-  const [reviewQueue, setReviewQueue] = useState(null) // array of contacts to review
+  const [reviewQueue, setReviewQueue] = useState(null)
+  const [reviewed, setReviewed] = useState(new Set()) // contact ids approved through review queue
+  const [sendAfterReview, setSendAfterReview] = useState(false)
 
   useEffect(() => { loadContacts() }, [])
   useEffect(() => {
@@ -91,17 +93,9 @@ export default function Contacts() {
     }
     setLoading(false)
     setMsg(`Generated ${generated.length} email${generated.length !== 1 ? 's' : ''}`)
-
-    // auto-open review for VP/MD contacts, queue the rest for manual review
-    const needsReview = generated.filter(c => c.tier === 'vp' || c.tier === 'md_partner')
-    const others = generated.filter(c => c.tier !== 'vp' && c.tier !== 'md_partner')
-    // put senior contacts first so they're forced through immediately
-    const queue = [...needsReview, ...others]
-    if (needsReview.length > 0) setReviewQueue(queue)
-    else if (others.length > 0) setReviewQueue(queue) // still offer review button
   }
 
-  async function handleSendSelected() {
+  async function executeSend() {
     const sendable = [...selected].filter(id => {
       const c = contacts.find(c => c.id === id)
       return c && c.generated_email && c.tier !== 'md_partner'
@@ -120,6 +114,23 @@ export default function Contacts() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSendSelected() {
+    const selectedContacts = [...selected].map(id => contacts.find(c => c.id === id)).filter(Boolean)
+    const unreviewedSenior = selectedContacts.filter(c =>
+      c.generated_email && (c.tier === 'vp' || c.tier === 'md_partner') && !reviewed.has(c.id)
+    )
+    if (unreviewedSenior.length > 0) {
+      // force review first, then send automatically after
+      const otherGenerated = selectedContacts.filter(c =>
+        c.generated_email && c.tier !== 'vp' && c.tier !== 'md_partner'
+      )
+      setReviewQueue([...unreviewedSenior, ...otherGenerated])
+      setSendAfterReview(true)
+      return
+    }
+    await executeSend()
   }
 
   async function handleDelete(id) {
@@ -164,8 +175,17 @@ export default function Contacts() {
       {reviewQueue && (
         <ReviewQueue
           contacts={reviewQueue}
-          onClose={() => setReviewQueue(null)}
-          onSaved={updated => setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))}
+          onClose={async () => {
+            setReviewQueue(null)
+            if (sendAfterReview) {
+              setSendAfterReview(false)
+              await executeSend()
+            }
+          }}
+          onSaved={updated => {
+            setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))
+            setReviewed(prev => new Set([...prev, updated.id]))
+          }}
         />
       )}
       {meetingContact && (
