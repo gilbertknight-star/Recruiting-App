@@ -33,6 +33,15 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
     )
 
 
+def append_signature(body: str, settings: dict) -> str:
+    sig = settings.get("signature", "").strip()
+    if not sig:
+        return body
+    # Both may be HTML or plain text — use HR separator
+    sep = '<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0">'
+    return f"{body}{sep}{sig}"
+
+
 def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
     tier = contact.get("tier", "analyst_associate")
     template = templates.get(tier, templates.get("analyst_associate", {}))
@@ -44,7 +53,8 @@ def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
-    return {"subject": template["subject"], "body": message.content[0].text.strip()}
+    body = append_signature(message.content[0].text.strip(), settings)
+    return {"subject": template["subject"], "body": body}
 
 
 def compose_free(prompt: str, context: str) -> dict:

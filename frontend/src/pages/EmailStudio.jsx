@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
-import { getTemplates, updateTemplate, composeEmail, getSettings, updateSettings } from '../api/client'
+import { getTemplates, updateTemplate, composeEmail, getSettings, updateSettings, getContacts, patchContact, generateBatchCustom } from '../api/client'
+import RichTextEditor, { plainToHtml } from '../components/RichTextEditor'
 
 const TIERS = [
   { key: 'analyst_associate', label: 'Analyst / Associate', short: 'Analyst' },
@@ -310,6 +311,24 @@ function Compose() {
   const [result, setResult] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [contacts, setContacts] = useState([])
+  const [saveContactId, setSaveContactId] = useState('')
+  const [saveMsg, setSaveMsg] = useState('')
+  const [batchLoading, setBatchLoading] = useState(false)
+  const [batchMsg, setBatchMsg] = useState('')
+
+  useEffect(() => {
+    getContacts().then(data => {
+      setContacts(data || [])
+    }).catch(() => {})
+  }, [])
+
+  const selectedIds = (() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem('contactSelection') || '[]')) }
+    catch { return new Set() }
+  })()
+  const selectedContacts = contacts.filter(c => selectedIds.has(c.id))
+  const selectedUndrafted = selectedContacts.filter(c => !c.generated_email)
 
   async function handleGenerate() {
     if (!prompt.trim()) return
@@ -317,7 +336,7 @@ function Compose() {
     setResult('')
     try {
       const r = await composeEmail(prompt, context)
-      setResult(r.body)
+      setResult(plainToHtml(r.body))
     } finally {
       setLoading(false)
     }
@@ -329,70 +348,114 @@ function Compose() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  async function handleSaveToContact() {
+    if (!saveContactId || !result) return
+    await patchContact(saveContactId, { generated_email: result })
+    setSaveMsg('Saved to contact!')
+    setTimeout(() => setSaveMsg(''), 3000)
+  }
+
+  async function handleBatchGenerate() {
+    if (!prompt.trim() || !selectedUndrafted.length) return
+    setBatchLoading(true)
+    setBatchMsg('')
+    try {
+      const r = await generateBatchCustom(prompt, selectedUndrafted.map(c => c.id))
+      setBatchMsg(`Done — ${r.generated} generated, ${r.failed} failed. Go to Contacts to review.`)
+    } catch {
+      setBatchMsg('Something went wrong.')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, alignItems: 'stretch', flex: 1 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, flex: 1, minHeight: 0 }}>
 
       {/* Left: inputs */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', flexShrink: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 14 }}>Compose with AI</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Describe what you need — AI writes the draft</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Write a one-off email or use your prompt as a batch template</div>
         </div>
 
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16, flex: 1 }}>
-          <div>
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 12, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <div style={{ flexShrink: 0 }}>
             <label style={lbl}>
               Recipient Context
-              <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6 }}>optional</span>
+              <span style={{ fontWeight: 400, color: 'var(--muted)', marginLeft: 6 }}>optional — for single emails</span>
             </label>
             <textarea
               value={context}
               onChange={e => setContext(e.target.value)}
-              placeholder="e.g. Sarah Kim, VP at Goldman Sachs — met briefly at a recruiting event last week"
-              rows={3}
+              placeholder="e.g. Sarah Kim, VP at Goldman Sachs — met at a recruiting event"
+              rows={2}
               className="no-scrollbar"
-              style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '10px 12px', resize: 'none' }}
+              style={{ fontFamily: 'inherit', fontSize: 13, lineHeight: 1.6, padding: '8px 12px', resize: 'none' }}
             />
           </div>
 
-          <div>
-            <label style={lbl}>What should this email do?</label>
+          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+            <label style={{ ...lbl, flexShrink: 0 }}>Prompt</label>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 6, flexShrink: 0 }}>
+              Use <code style={{ color: 'var(--accent)', fontSize: 11 }}>{'{name}'}</code> and <code style={{ color: 'var(--accent)', fontSize: 11 }}>{'{firm}'}</code> — filled in per contact when batch generating.
+            </div>
             <textarea
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              placeholder={"e.g. Write a short cold outreach asking for a 15-minute call about their experience in IB. Keep it under 150 words. Sound genuine, not templated."}
-              rows={7}
+              placeholder={"e.g. Write a short cold outreach to {name} at {firm} asking for a 15-minute call. Under 150 words. Genuine, not templated."}
               className="no-scrollbar"
-              style={{ fontFamily: 'inherit', fontSize: 14, lineHeight: 1.7, padding: '12px 14px', resize: 'none' }}
+              style={{ fontFamily: 'inherit', fontSize: 14, lineHeight: 1.7, padding: '12px 14px', resize: 'none', flex: 1, minHeight: 0 }}
             />
           </div>
 
-          <button
-            className="btn-primary"
-            onClick={handleGenerate}
-            disabled={loading || !prompt.trim()}
-            style={{ width: '100%', padding: '11px 0', fontSize: 14, fontWeight: 600, borderRadius: 8 }}
-          >
-            {loading ? 'Writing…' : 'Generate Email'}
-          </button>
+          <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              className="btn-primary"
+              onClick={handleGenerate}
+              disabled={loading || !prompt.trim()}
+              style={{ width: '100%', padding: '10px 0', fontSize: 14, fontWeight: 600, borderRadius: 8 }}
+            >
+              {loading ? 'Writing…' : 'Generate Preview'}
+            </button>
 
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 10 }}>Tips</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>
-              <div>• Be specific about tone — "warm but professional" beats "formal"</div>
-              <div>• Mention a word count target — recruiters read short emails</div>
-              <div>• Mention how you know them for a more personal result</div>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)' }}>Generate for Selected Contacts</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                    {selectedIds.size === 0
+                      ? 'Select contacts on the Contacts page first'
+                      : selectedUndrafted.length === 0
+                        ? `All ${selectedIds.size} selected already have drafts`
+                        : `${selectedUndrafted.length} of ${selectedIds.size} selected need a draft`}
+                  </div>
+                </div>
+                <button
+                  className="btn-secondary btn-sm"
+                  onClick={handleBatchGenerate}
+                  disabled={batchLoading || !prompt.trim() || selectedUndrafted.length === 0}
+                  style={{ flexShrink: 0 }}
+                >
+                  {batchLoading ? 'Generating…' : `Run (${selectedUndrafted.length})`}
+                </button>
+              </div>
+              {batchMsg && (
+                <div style={{ fontSize: 12, color: batchMsg.includes('wrong') ? 'var(--red)' : 'var(--green)' }}>
+                  {batchMsg}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Right: output */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontWeight: 600, fontSize: 14 }}>Generated Draft</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Edit directly · copy when ready</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Edit · copy · or save to a contact</div>
           </div>
           {result && (
             <button className="btn-secondary btn-sm" onClick={handleCopy}>
@@ -401,23 +464,35 @@ function Compose() {
           )}
         </div>
 
-        <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 10, minHeight: 0 }}>
           {result ? (
             <>
-              <textarea
+              <RichTextEditor
                 value={result}
-                onChange={e => setResult(e.target.value)}
-                className="no-scrollbar"
-                style={{
-                  flex: 1, fontFamily: 'inherit', fontSize: 14,
-                  lineHeight: 1.8, padding: '12px 14px', resize: 'none',
-                  border: '1px solid var(--border)', borderRadius: 8,
-                  background: 'var(--surface2)', color: 'var(--text)',
-                }}
+                onChange={setResult}
+                style={{ flex: 1, minHeight: 0 }}
+                placeholder="Your draft will appear here…"
               />
-              <button className="btn-secondary" onClick={handleGenerate} disabled={loading} style={{ width: '100%' }}>
-                {loading ? 'Regenerating…' : 'Regenerate'}
-              </button>
+              <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button className="btn-secondary" onClick={handleGenerate} disabled={loading} style={{ width: '100%' }}>
+                  {loading ? 'Regenerating…' : 'Regenerate'}
+                </button>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                  <label style={lbl}>Save this draft to a contact</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <select value={saveContactId} onChange={e => setSaveContactId(e.target.value)} style={{ flex: 1 }}>
+                      <option value="">Select contact…</option>
+                      {contacts.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} — {c.firm}</option>
+                      ))}
+                    </select>
+                    <button className="btn-primary btn-sm" onClick={handleSaveToContact} disabled={!saveContactId} style={{ flexShrink: 0 }}>
+                      Save
+                    </button>
+                  </div>
+                  {saveMsg && <div style={{ fontSize: 12, color: 'var(--green)', marginTop: 6 }}>{saveMsg}</div>}
+                </div>
+              </div>
             </>
           ) : (
             <div style={{
@@ -434,7 +509,7 @@ function Compose() {
               ) : (
                 <>
                   <div style={{ fontSize: 22, opacity: 0.4 }}>✉</div>
-                  <div style={{ lineHeight: 1.6 }}>Your draft will appear here.<br />Fill in the prompt and hit Generate.</div>
+                  <div style={{ lineHeight: 1.6 }}>Your draft will appear here.<br />Fill in the prompt and hit Generate Preview.</div>
                 </>
               )}
             </div>

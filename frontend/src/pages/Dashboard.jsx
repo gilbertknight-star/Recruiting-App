@@ -18,7 +18,7 @@ export default function Dashboard() {
     }
   }
 
-  if (!stats || !Object.keys(stats).length) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
+  if (stats === null) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
 
   const responseRate = (stats.total_sent || 0) > 0
     ? ((stats.replied / stats.total_sent) * 100).toFixed(1)

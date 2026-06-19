@@ -85,22 +85,34 @@ def get_or_create_label(service, label_name: str) -> str:
     return created["id"]
 
 
-def send_email(service, to: str, subject: str, body: str, firm: str, resume_path: str = None, scheduled_time: datetime = None) -> dict:
+def send_email(service, to: str, subject: str, body: str, firm: str, attachment_paths: list = None, scheduled_time: datetime = None) -> dict:
     recruiting_label_id = get_or_create_label(service, "Recruiting")
     firm_label_id = get_or_create_label(service, f"Recruiting/{firm}" if firm else "Recruiting/Other")
 
-    msg = MIMEMultipart()
+    # Wrap plain text in basic HTML if not already HTML
+    if body.strip().startswith('<'):
+        html_body = body
+    else:
+        paragraphs = body.split('\n\n')
+        html_body = ''.join(f'<p style="margin:0 0 12px 0">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs)
+        html_body = f'<div style="font-family:sans-serif;font-size:14px;line-height:1.6;color:#000">{html_body}</div>'
+
+    msg = MIMEMultipart('mixed')
     msg["To"] = to
     msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
+    alt = MIMEMultipart('alternative')
+    alt.attach(MIMEText(html_body, "html"))
+    msg.attach(alt)
 
-    if resume_path and Path(resume_path).exists():
-        with open(resume_path, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="{Path(resume_path).name}"')
-        msg.attach(part)
+    for path in (attachment_paths or []):
+        p = Path(path)
+        if p.exists():
+            with open(p, "rb") as f:
+                part = MIMEBase("application", "octet-stream")
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", f'attachment; filename="{p.name}"')
+            msg.attach(part)
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     send_body = {"raw": raw, "labelIds": [recruiting_label_id, firm_label_id]}
@@ -158,7 +170,7 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
                 subject=email["subject"],
                 body=email["body"],
                 firm=email.get("firm", ""),
-                resume_path=email.get("resume_path"),
+                attachment_paths=email.get("attachment_paths", []),
                 scheduled_time=email.get("scheduled_time"),
             )
             results.append({"id": email["id"], "success": True, **result})

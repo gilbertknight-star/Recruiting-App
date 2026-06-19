@@ -149,6 +149,50 @@ def generate_batch_endpoint(user=Depends(get_current_user)):
     return {"generated": sum(1 for r in results if r["success"]), "failed": sum(1 for r in results if not r["success"])}
 
 
+class CustomBatchRequest(BaseModel):
+    prompt: str
+    contact_ids: list[str]
+
+@app.post("/generate/batch/custom")
+def generate_batch_custom_endpoint(req: CustomBatchRequest, user=Depends(get_current_user)):
+    all_contacts = {c["id"]: c for c in get_all_contacts(user.id)}
+    contacts = [all_contacts[cid] for cid in req.contact_ids if cid in all_contacts and not all_contacts[cid].get("generated_email")]
+    settings = get_settings(user.id)
+    results = []
+    for contact in contacts:
+        try:
+            first_name = contact["name"].strip().split()[0]
+            personalized_prompt = req.prompt \
+                .replace("{name}", first_name) \
+                .replace("{firm}", contact.get("firm", "")) \
+                .replace("{title}", contact.get("title", ""))
+
+            context_parts = []
+            if contact.get("title"):
+                context_parts.append(f"Title: {contact['title']}")
+            if contact.get("location"):
+                context_parts.append(f"Location: {contact['location']}")
+            if contact.get("school"):
+                context_parts.append(f"School connection: {contact['school']}")
+            if contact.get("notes"):
+                context_parts.append(f"Notes: {contact['notes']}")
+            avail = settings.get("availability", "").strip()
+            if avail:
+                context_parts.append(f"My availability: {avail}")
+            context = "\n".join(context_parts)
+
+            result = compose_free(personalized_prompt, context)
+            body = result["body"]
+            sig = settings.get("signature", "").strip()
+            if sig:
+                body = f"{body}\n\n{sig}"
+            update_contact(user.id, contact["id"], {"generated_email": body})
+            results.append({"id": contact["id"], "success": True})
+        except Exception as e:
+            results.append({"id": contact["id"], "success": False, "error": str(e)})
+    return {"generated": sum(1 for r in results if r["success"]), "failed": sum(1 for r in results if not r["success"])}
+
+
 # --- Sending ---
 
 class SendRequest(BaseModel):
@@ -188,7 +232,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "subject": c["generated_subject"],
             "body": c["generated_email"],
             "firm": c["firm"],
-            "resume_path": settings.get("resume_attachment_path"),
+            "attachment_paths": [p for p in settings.get("attachments", []) if p],
             "scheduled_time": scheduled_time,
             "location": c.get("location", ""),
         })
@@ -257,8 +301,9 @@ class SettingsUpdate(BaseModel):
     emails_per_minute: Optional[int] = None
     sender_name: Optional[str] = None
     sender_school: Optional[str] = None
-    resume_attachment_path: Optional[str] = None
     availability: Optional[str] = None
+    signature: Optional[str] = None
+    attachments: Optional[list[str]] = None
 
 
 @app.get("/settings")

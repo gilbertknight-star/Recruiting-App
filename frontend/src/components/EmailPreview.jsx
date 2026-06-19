@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { generateEmail, patchContact } from '../api/client'
 import TierBadge from './TierBadge'
+import RichTextEditor, { plainToHtml } from './RichTextEditor'
 
 export default function EmailPreview({ contact, onClose, onSaved }) {
   const [subject, setSubject] = useState(contact.generated_subject || '')
-  const [body, setBody] = useState(contact.generated_email || '')
+  const [body, setBody] = useState(plainToHtml(contact.generated_email || ''))
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -13,7 +14,7 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
     try {
       const result = await generateEmail(contact.id)
       setSubject(result.subject)
-      setBody(result.body)
+      setBody(plainToHtml(result.body))
       setSaved(false)
     } finally {
       setLoading(false)
@@ -58,17 +59,11 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
         {/* Body */}
         <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Email Body</label>
-          <textarea
+          <RichTextEditor
             value={body}
-            onChange={e => { setBody(e.target.value); setSaved(false) }}
-            rows={16}
-            style={{
-              resize: 'vertical',
-              fontFamily: 'inherit',
-              fontSize: 14,
-              lineHeight: 1.7,
-              padding: '12px 14px',
-            }}
+            onChange={v => { setBody(v); setSaved(false) }}
+            style={{ minHeight: 320 }}
+            placeholder="Email body…"
           />
         </div>
 
