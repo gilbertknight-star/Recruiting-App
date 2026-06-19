@@ -1,14 +1,18 @@
 import os
 from dotenv import load_dotenv
-from supabase import create_client, Client
 
 load_dotenv()
+
+DEV_MODE = os.getenv("DEV_MODE", "false").lower() == "true"
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 
-# Service role client — bypasses RLS, backend use only
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+if DEV_MODE:
+    supabase = None
+else:
+    from supabase import create_client, Client
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 DEFAULT_TEMPLATES = [
     {
@@ -43,7 +47,8 @@ DEFAULT_TEMPLATES = [
 
 
 def ensure_user_defaults(user_id: str):
-    """Create default settings and templates for a new user if they don't exist."""
+    if DEV_MODE:
+        return
     existing = supabase.table("settings").select("id").eq("user_id", user_id).execute()
     if not existing.data:
         supabase.table("settings").insert({"user_id": user_id}).execute()

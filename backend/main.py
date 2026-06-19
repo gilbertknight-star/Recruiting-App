@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from auth import get_current_user, require_admin
-from db import supabase, ensure_user_defaults
+from db import supabase, ensure_user_defaults, DEV_MODE
 from contacts import (
     get_all_contacts, create_contact, update_contact, delete_contact,
     bulk_upsert_contacts, parse_csv, get_settings, update_settings,
@@ -30,6 +30,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Dev Mode ---
+
+@app.get("/dev-mode")
+def dev_mode_status():
+    return {"dev": DEV_MODE}
 
 
 # --- Auth ---

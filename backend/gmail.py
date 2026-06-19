@@ -13,7 +13,7 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
-from db import supabase
+from db import supabase, DEV_MODE
 
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
@@ -57,6 +57,8 @@ def get_gmail_service(user_id: str):
 
 
 def is_gmail_connected(user_id: str) -> bool:
+    if DEV_MODE:
+        return True
     res = supabase.table("gmail_tokens").select("user_id").eq("user_id", user_id).execute()
     return bool(res.data)
 
@@ -112,6 +114,9 @@ def scan_replies(service, contacts: list[dict]) -> list[dict]:
 
 
 def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0) -> list[dict]:
+    if DEV_MODE:
+        return [{"id": e["id"], "success": True, "message_id": "dev-msg", "thread_id": "dev-thread", "dev": True} for e in emails]
+
     results = []
     sent_this_batch = 0
     interval = 60.0 / per_minute

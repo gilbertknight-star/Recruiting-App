@@ -2,9 +2,9 @@ import csv
 import io
 import uuid
 from datetime import date, datetime
-from db import supabase
+from db import supabase, DEV_MODE
 
-TIER_KEYWORDS = {
+TIER_KEYWORDS = {  # also used by dev_store via import
     "analyst": "analyst_associate",
     "associate": "analyst_associate",
     "vp": "vp",
@@ -142,3 +142,11 @@ def increment_sent(user_id: str):
         "total_sent": settings.get("total_sent", 0) + 1,
         "last_reset_date": today,
     }).eq("user_id", user_id).execute()
+
+
+if DEV_MODE:
+    from dev_store import (
+        get_all_contacts, create_contact, update_contact, delete_contact,
+        bulk_upsert_contacts, get_settings, update_settings,
+        get_templates, update_template, get_stats, increment_sent,
+    )

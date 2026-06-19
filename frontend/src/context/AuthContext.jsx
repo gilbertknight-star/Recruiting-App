@@ -3,11 +3,19 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+const DEV_USER = { id: 'dev-user', email: 'dev@dev.com' }
+
+export function isDevMode() {
+  return localStorage.getItem('devMode') === 'true'
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const devMode = isDevMode()
+  const [user, setUser] = useState(devMode ? DEV_USER : null)
+  const [loading, setLoading] = useState(!devMode)
 
   useEffect(() => {
+    if (devMode) return
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
@@ -28,6 +36,7 @@ export function AuthProvider({ children }) {
   }
 
   async function getToken() {
+    if (devMode) return 'dev-token'
     const { data: { session } } = await supabase.auth.getSession()
     return session?.access_token
   }

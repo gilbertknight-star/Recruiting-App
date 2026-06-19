@@ -2,6 +2,11 @@ import { useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 
+function enterDevMode() {
+  localStorage.setItem('devMode', 'true')
+  window.location.reload()
+}
+
 export default function Login() {
   const { signIn } = useAuth()
   const [mode, setMode] = useState('signin') // 'signin' | 'signup'
@@ -34,6 +39,12 @@ export default function Login() {
 
   return (
     <div style={page}>
+      <button
+        onClick={enterDevMode}
+        style={{ position: 'absolute', bottom: 20, right: 20, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', fontSize: 12, padding: '5px 10px', cursor: 'pointer' }}
+      >
+        Enter Dev Mode
+      </button>
       <div style={card}>
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Recruiting Bot</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 28 }}>
@@ -68,6 +79,6 @@ export default function Login() {
   )
 }
 
-const page = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }
+const page = { minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)', position: 'relative' }
 const card = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '32px 28px', width: 360 }
 const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 4, fontWeight: 500 }

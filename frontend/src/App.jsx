@@ -1,6 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Routes, Route, NavLink } from 'react-router-dom'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { AuthProvider, useAuth, isDevMode } from './context/AuthContext'
+
+function exitDevMode() {
+  localStorage.removeItem('devMode')
+  window.location.reload()
+}
 import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
 import EmailStudio from './pages/EmailStudio'
@@ -11,14 +16,20 @@ import Login from './pages/Login'
 function Layout() {
   const { user, signOut } = useAuth()
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
+  const devMode = isDevMode()
 
   useEffect(() => {
-    // Initialize user defaults in Supabase on first login
     import('./api/client.js').then(({ getMe }) => getMe().catch(() => {}))
   }, [user?.id])
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {devMode && (
+        <div style={{ background: '#dc2626', color: '#fff', textAlign: 'center', padding: '6px 0', fontSize: 13, fontWeight: 600, letterSpacing: '0.05em', flexShrink: 0 }}>
+          DEV MODE — no data is saved, no emails are sent
+        </div>
+      )}
+      <div style={{ display: 'flex', flex: 1 }}>
       <nav style={sidebar}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 32, letterSpacing: '-0.3px' }}>
           Recruiting Bot
@@ -50,7 +61,10 @@ function Layout() {
           <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user?.email}
           </div>
-          <button className="btn-secondary btn-sm" onClick={signOut} style={{ width: '100%' }}>Sign Out</button>
+          {devMode
+            ? <button className="btn-secondary btn-sm" onClick={exitDevMode} style={{ width: '100%' }}>Exit Dev Mode</button>
+            : <button className="btn-secondary btn-sm" onClick={signOut} style={{ width: '100%' }}>Sign Out</button>
+          }
         </div>
       </nav>
       <main style={{ flex: 1, padding: '32px 28px', maxWidth: 1100, overflowY: 'auto' }}>
@@ -62,6 +76,7 @@ function Layout() {
           <Route path="/admin" element={<Admin />} />
         </Routes>
       </main>
+      </div>
     </div>
   )
 }
