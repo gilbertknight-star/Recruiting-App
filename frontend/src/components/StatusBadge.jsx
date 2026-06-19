@@ -4,7 +4,7 @@ const STATUS_COLORS = {
   Replied:            { bg: '#1a3a2a', color: '#22c55e' },
   Warm:               { bg: '#2a2a1a', color: '#eab308' },
   'Meeting Scheduled':{ bg: '#2a1a3a', color: '#c084fc' },
-  Closed:             { bg: '#1a3a2a', color: '#34d399' },
+  Referral:           { bg: '#1a3a2a', color: '#34d399' },
 }
 
 export default function StatusBadge({ status }) {

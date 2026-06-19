@@ -44,8 +44,8 @@ _SEED_CONTACTS = [
     {"name": "Tom Nguyen", "email": "t.nguyen@morganstanley.com", "title": "Vice President", "firm": "Morgan Stanley", "location": "New York", "tier": "vp", "status": "Meeting Scheduled", "sent_at": (datetime.utcnow() - timedelta(days=19)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=15)).isoformat()},
     {"name": "Grace Patel", "email": "g.patel@evercore.com", "title": "MD, Technology", "firm": "Evercore", "location": "San Francisco", "tier": "md_partner", "status": "Meeting Scheduled", "sent_at": (datetime.utcnow() - timedelta(days=25)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=20)).isoformat()},
     # Closed
-    {"name": "William Turner", "email": "w.turner@lazard.com", "title": "Managing Director", "firm": "Lazard", "location": "New York", "tier": "md_partner", "status": "Closed", "sent_at": (datetime.utcnow() - timedelta(days=30)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=25)).isoformat()},
-    {"name": "Isabella Cruz", "email": "i.cruz@jefferies.com", "title": "Associate", "firm": "Jefferies", "location": "New York", "tier": "analyst_associate", "status": "Closed", "sent_at": (datetime.utcnow() - timedelta(days=28)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=22)).isoformat()},
+    {"name": "William Turner", "email": "w.turner@lazard.com", "title": "Managing Director", "firm": "Lazard", "location": "New York", "tier": "md_partner", "status": "Referral", "sent_at": (datetime.utcnow() - timedelta(days=30)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=25)).isoformat()},
+    {"name": "Isabella Cruz", "email": "i.cruz@jefferies.com", "title": "Associate", "firm": "Jefferies", "location": "New York", "tier": "analyst_associate", "status": "Referral", "sent_at": (datetime.utcnow() - timedelta(days=28)).isoformat(), "replied_at": (datetime.utcnow() - timedelta(days=22)).isoformat()},
     # More Cold to round out to 50
     {"name": "Patrick Stone", "email": "p.stone@citi.com", "title": "Investment Banking Analyst", "firm": "Citi", "location": "New York", "tier": "analyst_associate", "status": "Cold"},
     {"name": "Hannah Moore", "email": "h.moore@deutschebank.com", "title": "Analyst", "firm": "Deutsche Bank", "location": "New York", "tier": "analyst_associate", "status": "Cold"},
@@ -207,7 +207,7 @@ def get_stats(user_id: str) -> dict:
         "replied": sum(1 for c in contacts if c["status"] == "Replied"),
         "warm": sum(1 for c in contacts if c["status"] == "Warm"),
         "meeting_scheduled": sum(1 for c in contacts if c["status"] == "Meeting Scheduled"),
-        "closed": sum(1 for c in contacts if c["status"] == "Closed"),
+        "closed": sum(1 for c in contacts if c["status"] == "Referral"),
         "total_sent": _settings.get("total_sent", 0),
         "today_sent": _settings.get("today_sent", 0),
         "daily_cap": _settings.get("daily_cap", 50),

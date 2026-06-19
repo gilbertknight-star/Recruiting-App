@@ -5,7 +5,7 @@ import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
 import AddContactModal from '../components/AddContactModal'
 
-const STATUSES = ['Cold', 'Contacted', 'Replied', 'Warm', 'Meeting Scheduled', 'Closed']
+const STATUSES = ['Cold', 'Contacted', 'Replied', 'Warm', 'Meeting Scheduled', 'Referral']
 
 export default function Contacts() {
   const [contacts, setContacts] = useState([])

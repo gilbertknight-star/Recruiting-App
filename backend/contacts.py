@@ -18,7 +18,7 @@ TIER_KEYWORDS = {  # also used by dev_store via import
     "head": "md_partner",
 }
 
-STATUS_FLOW = ["Cold", "Contacted", "Replied", "Warm", "Meeting Scheduled", "Closed"]
+STATUS_FLOW = ["Cold", "Contacted", "Replied", "Warm", "Meeting Scheduled", "Referral"]
 
 
 def detect_tier(title: str) -> str:
@@ -126,7 +126,7 @@ def get_stats(user_id: str) -> dict:
         "replied": sum(1 for c in contacts if c["status"] == "Replied"),
         "warm": sum(1 for c in contacts if c["status"] == "Warm"),
         "meeting_scheduled": sum(1 for c in contacts if c["status"] == "Meeting Scheduled"),
-        "closed": sum(1 for c in contacts if c["status"] == "Closed"),
+        "closed": sum(1 for c in contacts if c["status"] == "Referral"),
         "total_sent": settings.get("total_sent", 0),
         "today_sent": today_sent,
         "daily_cap": settings.get("daily_cap", 50),

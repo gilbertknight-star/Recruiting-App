@@ -67,7 +67,7 @@ export default function Dashboard() {
             { label: 'Replied', value: stats.replied, color: 'var(--green)' },
             { label: 'Warm', value: stats.warm, color: 'var(--yellow)' },
             { label: 'Meeting', value: stats.meeting_scheduled, color: '#c084fc' },
-            { label: 'Closed', value: stats.closed, color: '#34d399' },
+            { label: 'Referral', value: stats.closed, color: '#34d399' },
           ].map(s => (
             <div key={s.label} style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 24, fontWeight: 700, color: s.color }}>{s.value}</div>
