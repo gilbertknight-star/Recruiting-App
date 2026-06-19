@@ -5,6 +5,7 @@ import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
 import AddContactModal from '../components/AddContactModal'
 import MeetingModal from '../components/MeetingModal'
+import ReviewQueue from '../components/ReviewQueue'
 
 function formatMeeting(startIso, endIso) {
   const s = new Date(startIso)
@@ -32,6 +33,7 @@ export default function Contacts() {
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
   const [meetingContact, setMeetingContact] = useState(null)
+  const [reviewQueue, setReviewQueue] = useState(null) // array of contacts to review
 
   useEffect(() => { loadContacts() }, [])
   useEffect(() => {
@@ -77,16 +79,26 @@ export default function Contacts() {
   async function handleGenerateSelected() {
     setLoading(true)
     setMsg('')
-    let done = 0
+    const generated = []
     for (const id of selected) {
       try {
         const result = await generateEmail(id)
-        setContacts(prev => prev.map(x => x.id === id ? { ...x, generated_email: result.body, generated_subject: result.subject } : x))
-        done++
+        const contact = contacts.find(c => c.id === id)
+        const updated = { ...contact, generated_email: result.body, generated_subject: result.subject }
+        setContacts(prev => prev.map(x => x.id === id ? updated : x))
+        generated.push(updated)
       } catch {}
     }
-    setMsg(`Generated ${done} email${done !== 1 ? 's' : ''}`)
     setLoading(false)
+    setMsg(`Generated ${generated.length} email${generated.length !== 1 ? 's' : ''}`)
+
+    // auto-open review for VP/MD contacts, queue the rest for manual review
+    const needsReview = generated.filter(c => c.tier === 'vp' || c.tier === 'md_partner')
+    const others = generated.filter(c => c.tier !== 'vp' && c.tier !== 'md_partner')
+    // put senior contacts first so they're forced through immediately
+    const queue = [...needsReview, ...others]
+    if (needsReview.length > 0) setReviewQueue(queue)
+    else if (others.length > 0) setReviewQueue(queue) // still offer review button
   }
 
   async function handleSendSelected() {
@@ -149,6 +161,13 @@ export default function Contacts() {
           onSaved={handleAddContact}
         />
       )}
+      {reviewQueue && (
+        <ReviewQueue
+          contacts={reviewQueue}
+          onClose={() => setReviewQueue(null)}
+          onSaved={updated => setContacts(prev => prev.map(c => c.id === updated.id ? updated : c))}
+        />
+      )}
       {meetingContact && (
         <MeetingModal
           contact={meetingContact}
@@ -202,6 +221,14 @@ export default function Contacts() {
             <button className="btn-secondary btn-sm" onClick={handleGenerateSelected} disabled={loading}>
               {loading ? 'Generating…' : `Generate (${selected.size})`}
             </button>
+            {(() => {
+              const withDrafts = [...selected].map(id => contacts.find(c => c.id === id)).filter(c => c?.generated_email)
+              return withDrafts.length > 0 && (
+                <button className="btn-secondary btn-sm" onClick={() => setReviewQueue(withDrafts)} style={{ color: '#c084fc', borderColor: '#c084fc' }}>
+                  Review ({withDrafts.length})
+                </button>
+              )
+            })()}
             <button className="btn-primary btn-sm" onClick={handleSendSelected} disabled={loading}>
               {loading ? 'Sending…' : `Send (${selected.size})`}
             </button>
