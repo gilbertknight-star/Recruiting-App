@@ -19,7 +19,10 @@ const STATUSES = ['Cold', 'Contacted', 'Replied', 'Warm', 'Meeting Scheduled', '
 
 export default function Contacts() {
   const [contacts, setContacts] = useState([])
-  const [selected, setSelected] = useState(new Set())
+  const [selected, setSelected] = useState(() => {
+    try { return new Set(JSON.parse(sessionStorage.getItem('contactSelection') || '[]')) }
+    catch { return new Set() }
+  })
   const [preview, setPreview] = useState(null)
   const [addModal, setAddModal] = useState(false)
   const [editContact, setEditContact] = useState(null)
@@ -31,6 +34,9 @@ export default function Contacts() {
   const [meetingContact, setMeetingContact] = useState(null)
 
   useEffect(() => { loadContacts() }, [])
+  useEffect(() => {
+    sessionStorage.setItem('contactSelection', JSON.stringify([...selected]))
+  }, [selected])
 
   async function loadContacts() {
     try {

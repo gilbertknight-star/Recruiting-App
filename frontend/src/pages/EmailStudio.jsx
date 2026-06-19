@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getTemplates, updateTemplate } from '../api/client'
 
 const TIERS = [
@@ -12,7 +12,9 @@ export default function EmailStudio() {
   const [templates, setTemplates] = useState(null)
   const [activeTier, setActiveTier] = useState('analyst_associate')
   const [draft, setDraft] = useState({})
-  const [saved, setSaved] = useState(false)
+  const [saveState, setSaveState] = useState('idle') // 'idle' | 'saving' | 'saved'
+  const debounceRef = useRef(null)
+  const latestDraft = useRef(draft)
 
   useEffect(() => {
     getTemplates().then(t => {
@@ -25,11 +27,19 @@ export default function EmailStudio() {
     if (templates) setDraft({ ...templates[activeTier] })
   }, [activeTier])
 
-  async function handleSave() {
-    await updateTemplate(activeTier, draft)
-    setTemplates(prev => ({ ...prev, [activeTier]: draft }))
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  // keep ref in sync so the debounce timeout always has the latest draft
+  useEffect(() => { latestDraft.current = draft }, [draft])
+
+  function handleChange(key, val) {
+    setDraft(d => ({ ...d, [key]: val }))
+    setSaveState('saving')
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      await updateTemplate(activeTier, { ...latestDraft.current, [key]: val })
+      setTemplates(prev => ({ ...prev, [activeTier]: { ...latestDraft.current, [key]: val } }))
+      setSaveState('saved')
+      setTimeout(() => setSaveState('idle'), 2000)
+    }, 1000)
   }
 
   if (!templates) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
@@ -49,10 +59,17 @@ export default function EmailStudio() {
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ fontWeight: 500, margin: 0 }}>{TIERS.find(t => t.key === activeTier)?.label}</h3>
+          <span style={{ fontSize: 12, color: saveState === 'saved' ? 'var(--green)' : 'var(--muted)', transition: 'color 0.2s' }}>
+            {saveState === 'saving' ? 'Saving…' : saveState === 'saved' ? 'Saved' : 'Auto-saves as you type'}
+          </span>
+        </div>
+
         <div>
-          <label style={lbl}>Subject Line Template</label>
+          <label style={lbl}>Subject Line</label>
           <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Variables: {'{name}'}, {'{firm}'}, {'{title}'}</p>
-          <input value={draft.subject || ''} onChange={e => setDraft(d => ({ ...d, subject: e.target.value }))} />
+          <input value={draft.subject || ''} onChange={e => handleChange('subject', e.target.value)} />
         </div>
 
         <div>
@@ -62,7 +79,7 @@ export default function EmailStudio() {
           </p>
           <textarea
             value={draft.prompt || ''}
-            onChange={e => setDraft(d => ({ ...d, prompt: e.target.value }))}
+            onChange={e => handleChange('prompt', e.target.value)}
             rows={10}
             style={{ resize: 'vertical' }}
           />
@@ -71,17 +88,12 @@ export default function EmailStudio() {
         <div style={{ display: 'flex', gap: 16 }}>
           <div style={{ flex: 1 }}>
             <label style={lbl}>Tone</label>
-            <input value={draft.tone || ''} onChange={e => setDraft(d => ({ ...d, tone: e.target.value }))} />
+            <input value={draft.tone || ''} onChange={e => handleChange('tone', e.target.value)} />
           </div>
           <div style={{ flex: 1 }}>
             <label style={lbl}>Max Words</label>
-            <input type="number" value={draft.max_words || ''} onChange={e => setDraft(d => ({ ...d, max_words: parseInt(e.target.value) }))} />
+            <input type="number" value={draft.max_words || ''} onChange={e => handleChange('max_words', parseInt(e.target.value))} />
           </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button className="btn-primary" onClick={handleSave}>Save Template</button>
-          {saved && <span style={{ color: 'var(--green)', fontSize: 13 }}>Saved!</span>}
         </div>
       </div>
 
