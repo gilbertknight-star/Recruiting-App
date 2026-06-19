@@ -31,8 +31,8 @@ export const generateEmail = (id) => api.post(`/generate/${id}`).then(r => r.dat
 export const composeEmail = (prompt, context) => api.post('/compose', { prompt, context }).then(r => r.data)
 export const generateBatch = () => api.post('/generate/batch').then(r => r.data)
 
-export const sendEmails = (contactIds, scheduledTime = null) =>
-  api.post('/send', { contact_ids: contactIds, scheduled_time: scheduledTime }).then(r => r.data)
+export const sendEmails = (contactIds, options = {}) =>
+  api.post('/send', { contact_ids: contactIds, ...options }).then(r => r.data)
 export const scanReplies = () => api.post('/scan-replies').then(r => r.data)
 
 export const getStats = () => api.get('/stats').then(r => r.data)

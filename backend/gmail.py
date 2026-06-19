@@ -105,7 +105,7 @@ def send_email(service, to: str, subject: str, body: str, firm: str, resume_path
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     send_body = {"raw": raw, "labelIds": [recruiting_label_id, firm_label_id]}
     if scheduled_time:
-        send_body["sendAt"] = scheduled_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        send_body["scheduledSendTime"] = scheduled_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     result = service.users().messages().send(userId="me", body=send_body).execute()
     return {"message_id": result["id"], "thread_id": result.get("threadId")}

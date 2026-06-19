@@ -6,6 +6,7 @@ import EmailPreview from '../components/EmailPreview'
 import AddContactModal from '../components/AddContactModal'
 import MeetingModal from '../components/MeetingModal'
 import ReviewQueue from '../components/ReviewQueue'
+import SendModal from '../components/SendModal'
 
 function formatMeeting(startIso, endIso) {
   const s = new Date(startIso)
@@ -36,6 +37,7 @@ export default function Contacts() {
   const [reviewQueue, setReviewQueue] = useState(null)
   const [reviewed, setReviewed] = useState(new Set())
   const [sendAfterReview, setSendAfterReview] = useState(false)
+  const [sendModal, setSendModal] = useState(false)
   const [tierRules, setTierRules] = useState({})
 
   useEffect(() => {
@@ -128,7 +130,7 @@ export default function Contacts() {
     setMsg(parts.join(' · '))
   }
 
-  async function executeSend() {
+  async function executeSend(scheduleDate, scheduleTime) {
     const sendable = [...selected].filter(id => {
       const c = contacts.find(c => c.id === id)
       return c && c.generated_email && c.tier !== 'md_partner'
@@ -137,12 +139,16 @@ export default function Contacts() {
       setMsg('No sendable emails — generate drafts first, and MD/Partner contacts must be sent manually')
       return
     }
-    if (!confirm(`Send ${sendable.length} email${sendable.length !== 1 ? 's' : ''}?`)) return
     setLoading(true)
     try {
-      const results = await sendEmails(sendable)
+      const options = scheduleDate && scheduleTime
+        ? { schedule_date: scheduleDate, schedule_time: scheduleTime }
+        : {}
+      const results = await sendEmails(sendable, options)
       const sent = results.filter(r => r.success).length
-      setMsg(`Sent ${sent} / ${sendable.length}`)
+      setMsg(scheduleDate
+        ? `Scheduled ${sent} email${sent !== 1 ? 's' : ''} for ${scheduleTime} recipient local time`
+        : `Sent ${sent} / ${sendable.length}`)
       loadContacts()
     } finally {
       setLoading(false)
@@ -159,7 +165,7 @@ export default function Contacts() {
       setSendAfterReview(true)
       return
     }
-    await executeSend()
+    setSendModal(true)
   }
 
   async function handleDelete(id) {
@@ -201,6 +207,17 @@ export default function Contacts() {
           onSaved={handleAddContact}
         />
       )}
+      {sendModal && (
+        <SendModal
+          count={[...selected].filter(id => {
+            const c = contacts.find(c => c.id === id)
+            return c && c.generated_email && c.tier !== 'md_partner'
+          }).length}
+          onCancel={() => setSendModal(false)}
+          onSendNow={() => { setSendModal(false); executeSend() }}
+          onSchedule={(date, time) => { setSendModal(false); executeSend(date, time) }}
+        />
+      )}
       {reviewQueue && (
         <ReviewQueue
           contacts={reviewQueue}
@@ -208,11 +225,11 @@ export default function Contacts() {
             setReviewQueue(null)
             setSendAfterReview(false)
           }}
-          onClose={async () => {
+          onClose={() => {
             setReviewQueue(null)
             if (sendAfterReview) {
               setSendAfterReview(false)
-              await executeSend()
+              setSendModal(true)
             }
           }}
           onSaved={updated => {

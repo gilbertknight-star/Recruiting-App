@@ -14,6 +14,7 @@ from contacts import (
     get_templates, update_template, get_stats, increment_sent,
 )
 from email_gen import generate_email, generate_batch, compose_free
+from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
     is_gmail_connected, rate_limited_send, scan_replies,
@@ -152,7 +153,9 @@ def generate_batch_endpoint(user=Depends(get_current_user)):
 
 class SendRequest(BaseModel):
     contact_ids: list[str]
-    scheduled_time: Optional[str] = None
+    scheduled_time: Optional[str] = None       # legacy: single UTC ISO string
+    schedule_date: Optional[str] = None         # e.g. "2026-06-21"
+    schedule_time: Optional[str] = None         # e.g. "09:00"  — per-contact local time
 
 
 @app.post("/send")
@@ -170,6 +173,15 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
         c = all_contacts.get(cid)
         if not c or not c.get("generated_email") or c.get("tier") == "md_partner":
             continue
+
+        # Per-contact local-time scheduling
+        scheduled_time = None
+        if req.schedule_date and req.schedule_time:
+            tz_id = location_to_timezone(c.get("location", ""))
+            scheduled_time = local_to_utc(req.schedule_date, req.schedule_time, tz_id)
+        elif req.scheduled_time:
+            scheduled_time = datetime.fromisoformat(req.scheduled_time)
+
         emails_to_send.append({
             "id": cid,
             "to": c["email"],
@@ -177,7 +189,8 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "body": c["generated_email"],
             "firm": c["firm"],
             "resume_path": settings.get("resume_attachment_path"),
-            "scheduled_time": datetime.fromisoformat(req.scheduled_time) if req.scheduled_time else None,
+            "scheduled_time": scheduled_time,
+            "location": c.get("location", ""),
         })
 
     service = get_gmail_service(user.id)
