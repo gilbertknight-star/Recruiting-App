@@ -165,10 +165,15 @@ export default function Calendar() {
         </div>
 
         {/* Legend */}
-        <div style={{ display: 'flex', gap: 14, marginLeft: 8 }}>
-          {Object.values(E).map(e => (
-            <div key={e.label} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--muted)' }}>
-              <span style={{ width: 9, height: 9, borderRadius: '50%', background: e.color, display: 'inline-block' }} />
+        <div style={{ display: 'flex', gap: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px', marginLeft: 8 }}>
+          {Object.values(E).map((e, i) => (
+            <div key={e.label} style={{
+              display: 'flex', alignItems: 'center', gap: 6,
+              fontSize: 12, fontWeight: 500, color: 'var(--muted)',
+              padding: '3px 10px',
+              borderRight: i < Object.values(E).length - 1 ? '1px solid var(--border)' : 'none',
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: e.color, display: 'inline-block', flexShrink: 0 }} />
               {e.label}
             </div>
           ))}
