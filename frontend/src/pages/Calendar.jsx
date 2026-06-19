@@ -73,12 +73,20 @@ export default function Calendar() {
   const [weekStart, setWeekStart] = useState(getWeekStart(today))
   const [contacts, setContacts] = useState([])
   const [selectedDay, setSelectedDay] = useState(null)
+  const [filterTier, setFilterTier] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => {
     getContacts().then(setContacts).catch(() => setContacts([]))
   }, [])
 
-  const eventMap = useMemo(() => buildEventMap(contacts), [contacts])
+  const filteredContacts = useMemo(() => contacts.filter(c => {
+    if (filterTier && c.tier !== filterTier) return false
+    if (filterStatus && c.status !== filterStatus) return false
+    return true
+  }), [contacts, filterTier, filterStatus])
+
+  const eventMap = useMemo(() => buildEventMap(filteredContacts), [filteredContacts])
 
   // ── Month navigation ──
   function prevMonth() {
@@ -136,7 +144,8 @@ export default function Calendar() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 0 }}>
 
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexShrink: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16, flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600, marginRight: 8 }}>Calendar</h1>
 
         <button onClick={goToday} style={toolBtn}>Today</button>
@@ -178,6 +187,29 @@ export default function Calendar() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* ── Filters ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ fontSize: 13, padding: '5px 10px', width: 160 }}>
+          <option value="">All Seniority</option>
+          <option value="analyst_associate">Analyst / Associate</option>
+          <option value="vp">VP / Director</option>
+          <option value="md_partner">MD / Partner</option>
+          <option value="n_a">N/A</option>
+        </select>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '5px 10px', width: 170 }}>
+          <option value="">All Stages</option>
+          {['Cold','Contacted','Replied','Warm','Meeting Scheduled','Referral'].map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
+        {(filterTier || filterStatus) && (
+          <button onClick={() => { setFilterTier(''); setFilterStatus('') }} style={{ ...toolBtn, color: 'var(--muted)', fontSize: 12 }}>
+            Clear filters
+          </button>
+        )}
+      </div>
       </div>
 
       {/* ── Month View ── */}
