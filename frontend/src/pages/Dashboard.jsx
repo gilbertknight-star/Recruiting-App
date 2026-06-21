@@ -1,6 +1,5 @@
-import { useEffect, useState, useMemo, memo } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import Globe from 'react-globe.gl'
 import { getStats, scanReplies, getContacts } from '../api/client'
 import { resolveCity } from '../lib/cityData'
 
@@ -21,7 +20,7 @@ function bestStatus(contacts) {
   return 'Cold'
 }
 
-// ── Live timezone clocks — isolated so ticks don't re-render the map ─────────
+// ── Live timezone clocks ──────────────────────────────────────────────────────
 function LiveClockPanel({ contacts }) {
   const [time, setTime] = useState(new Date())
   useEffect(() => {
@@ -55,18 +54,18 @@ function LiveClockPanel({ contacts }) {
 
   return (
     <div style={{
-      position: 'absolute', top: 16, right: 16, zIndex: 1000,
-      background: 'rgba(15,17,23,0.88)', backdropFilter: 'blur(10px)',
-      border: '1px solid rgba(46,50,80,0.7)', borderRadius: 10,
-      padding: '14px 18px', minWidth: 170,
+      position: 'absolute', top: 16, right: 16, zIndex: 10,
+      background: 'rgba(10,12,20,0.82)', backdropFilter: 'blur(12px)',
+      border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+      padding: '14px 18px', minWidth: 175,
     }}>
-      <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 10, textTransform: 'uppercase' }}>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 10, textTransform: 'uppercase' }}>
         Contact Timezones
       </div>
       {clocks.map(city => (
         <div key={city.tz} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 7, gap: 20 }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{city.name}</span>
-          <span style={{ fontSize: 13, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: 'var(--text)', letterSpacing: '0.02em' }}>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)' }}>{city.name}</span>
+          <span style={{ fontSize: 13, fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: '#fff' }}>
             {new Intl.DateTimeFormat('en-US', { timeZone: city.tz, hour: 'numeric', minute: '2-digit', hour12: true }).format(time)}
           </span>
         </div>
@@ -74,129 +73,6 @@ function LiveClockPanel({ contacts }) {
     </div>
   )
 }
-
-// ── Solar terminator — computed from first principles, no library needed ──────
-function nightGeoJSON(date) {
-  const ts = (date || new Date()).getTime()
-
-  // Days since J2000.0
-  const n = ts / 86400000 - 10957.5
-  // Solar mean anomaly (radians)
-  const g = (((357.528 + 0.9856003 * n) % 360 + 360) % 360) * (Math.PI / 180)
-  // Solar ecliptic longitude (radians)
-  const L = ((280.46 + 0.9856474 * n) % 360 + 360) % 360
-  const lambda = ((L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI) / 180
-  // Solar declination (radians)
-  const dec = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda))
-
-  // Sub-solar longitude: at UTC 12:00 the sun is near 0°, each hour shifts 15° west
-  const utcHours = (ts % 86400000) / 3600000
-  const subSolarLon = ((12 - utcHours) * 15 + 360) % 360 - 180  // -180..180
-
-  // For each longitude compute the terminator latitude:
-  // tan(φ) = -cos(H) / tan(δ)  where H = lon - subSolarLon
-  const EPS = 1e-6
-  const safeDec = Math.abs(dec) < EPS ? (dec >= 0 ? EPS : -EPS) : dec
-
-  const pts = []
-  for (let lon = -180; lon <= 180; lon += 1) {
-    const H = (lon - subSolarLon) * Math.PI / 180
-    const lat = Math.atan(-Math.cos(H) / Math.tan(safeDec)) * (180 / Math.PI)
-    pts.push([lon, lat])   // GeoJSON is [lng, lat]
-  }
-
-  // Close the polygon over the night-side pole
-  const poleLat = dec > 0 ? -90 : 90
-  const ring = [
-    [pts[0][0], poleLat],
-    ...pts,
-    [pts[pts.length - 1][0], poleLat],
-    [pts[0][0], poleLat],
-  ]
-
-  return {
-    type: 'Feature',
-    geometry: { type: 'Polygon', coordinates: [ring] },
-    properties: {},
-  }
-}
-
-// ── Map — memoized so clock ticks don't cause re-renders ─────────────────────
-const ContactMap = memo(function ContactMap({ pins }) {
-  const [nightData, setNightData] = useState(() => nightGeoJSON())
-
-  useEffect(() => {
-    const id = setInterval(() => setNightData(nightGeoJSON()), 60000)
-    return () => clearInterval(id)
-  }, [])
-
-  return (
-    <MapContainer
-      center={[30, -20]} zoom={2}
-      style={{ height: '100%', width: '100%' }}
-      zoomControl={true}
-      attributionControl={true}
-      minZoom={2}
-    >
-      {/* Satellite base */}
-      <TileLayer
-        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-        attribution='Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA'
-        maxZoom={19}
-      />
-      {/* Night-side overlay — re-keyed each minute to force GeoJSON re-render */}
-      <GeoJSON
-        key={nightData.geometry.coordinates[0][1]?.[1]}
-        data={nightData}
-        style={{ fillColor: '#0a1628', fillOpacity: 0.52, color: '#2a4a8a', weight: 1.5, opacity: 0.7 }}
-      />
-      {/* Place labels on top */}
-      <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
-        subdomains="abcd"
-        maxZoom={19}
-        opacity={0.7}
-      />
-      {pins.map((pin, i) => {
-        const status = bestStatus(pin.contacts)
-        const color = STATUS_COLOR[status]
-        const r = Math.min(20, 6 + pin.contacts.length * 2.5)
-        return (
-          <CircleMarker
-            key={i}
-            center={pin.coords}
-            radius={r}
-            pathOptions={{ color, fillColor: color, fillOpacity: 0.8, weight: 2, opacity: 0.35 }}
-          >
-            <Popup>
-              <div style={{ minWidth: 190, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', padding: '2px 0' }}>
-                <div style={{ fontWeight: 700, marginBottom: 10, fontSize: 13, borderBottom: '1px solid #e5e7eb', paddingBottom: 6 }}>
-                  {pin.city.name}
-                  <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
-                    {pin.contacts.length} contact{pin.contacts.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                {pin.contacts.map(c => (
-                  <div key={c.id} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: 12 }}>{c.name}</div>
-                      <div style={{ color: '#6b7280', fontSize: 11 }}>{c.firm}</div>
-                    </div>
-                    <span style={{
-                      padding: '2px 7px', borderRadius: 99, fontSize: 10, fontWeight: 600, whiteSpace: 'nowrap',
-                      background: (STATUS_COLOR[c.status] || '#64748b') + '25',
-                      color: STATUS_COLOR[c.status] || '#64748b',
-                    }}>{c.status}</span>
-                  </div>
-                ))}
-              </div>
-            </Popup>
-          </CircleMarker>
-        )
-      })}
-    </MapContainer>
-  )
-})
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 function StatCard({ label, value, color }) {
@@ -208,15 +84,71 @@ function StatCard({ label, value, color }) {
   )
 }
 
+// ── Popup for clicked pin ─────────────────────────────────────────────────────
+function PinPopup({ pin, onClose }) {
+  if (!pin) return null
+  return (
+    <div style={{
+      position: 'absolute', bottom: 60, left: '50%', transform: 'translateX(-50%)',
+      zIndex: 20, background: 'rgba(10,12,20,0.92)', backdropFilter: 'blur(16px)',
+      border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+      padding: '16px 20px', minWidth: 220, maxWidth: 300,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: '#fff' }}>{pin.city.name}</div>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 18, padding: 0, lineHeight: 1, cursor: 'pointer' }}>×</button>
+      </div>
+      {pin.contacts.map(c => (
+        <div key={c.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: '#fff' }}>{c.name}</span>
+            <span style={{
+              padding: '2px 8px', borderRadius: 99, fontSize: 10, fontWeight: 700,
+              background: (STATUS_COLOR[c.status] || '#64748b') + '30',
+              color: STATUS_COLOR[c.status] || '#64748b',
+            }}>{c.status}</span>
+          </div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>{c.firm}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ── Main dashboard ────────────────────────────────────────────────────────────
 export default function Dashboard() {
+  const globeRef = useRef()
+  const containerRef = useRef()
+  const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight })
   const [stats, setStats] = useState(null)
   const [contacts, setContacts] = useState([])
   const [scanning, setScanning] = useState(false)
+  const [selectedPin, setSelectedPin] = useState(null)
 
   useEffect(() => {
     getStats().then(setStats).catch(() => setStats({}))
     getContacts().then(setContacts).catch(() => setContacts([]))
+  }, [])
+
+  // Track container size for the globe
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => {
+      setDims({ w: e.contentRect.width, h: e.contentRect.height })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  // Slow auto-rotation
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe) return
+    globe.controls().autoRotate = true
+    globe.controls().autoRotateSpeed = 0.4
+    globe.controls().enableDamping = true
+    globe.pointOfView({ altitude: 2.2 }, 0)
   }, [])
 
   const pins = useMemo(() => {
@@ -224,11 +156,21 @@ export default function Dashboard() {
     for (const c of contacts) {
       const city = resolveCity(c.location)
       if (!city) continue
-      if (!groups[city.name]) groups[city.name] = { coords: city.coords, city, contacts: [] }
+      if (!groups[city.name]) groups[city.name] = { city, lat: city.coords[0], lng: city.coords[1], contacts: [] }
       groups[city.name].contacts.push(c)
     }
-    return Object.values(groups)
+    return Object.values(groups).map(p => ({
+      ...p,
+      color: STATUS_COLOR[bestStatus(p.contacts)],
+      size: Math.min(0.6, 0.25 + p.contacts.length * 0.08),
+      label: `${p.city.name} (${p.contacts.length})`,
+    }))
   }, [contacts])
+
+  const handlePointClick = useCallback((point) => {
+    setSelectedPin(point)
+    globeRef.current?.pointOfView({ lat: point.lat, lng: point.lng, altitude: 1.4 }, 800)
+  }, [])
 
   const responseRate = stats && stats.total_sent > 0
     ? ((stats.replied / stats.total_sent) * 100).toFixed(1) : '0.0'
@@ -255,24 +197,46 @@ export default function Dashboard() {
   return (
     <div style={{ margin: '-32px -28px' }}>
 
-      {/* ── HERO MAP ─────────────────────────────────────────────── */}
-      <div style={{ position: 'relative', height: '100vh' }}>
-        <ContactMap pins={pins} />
+      {/* ── GLOBE HERO ─────────────────────────────────────────── */}
+      <div ref={containerRef} style={{ position: 'relative', height: '100vh', background: '#000' }}>
+        <Globe
+          ref={globeRef}
+          width={dims.w}
+          height={dims.h}
+          globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
+          bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+          backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
+          showAtmosphere={true}
+          atmosphereColor="#4a90d9"
+          atmosphereAltitude={0.18}
+          pointsData={pins}
+          pointLat="lat"
+          pointLng="lng"
+          pointColor="color"
+          pointAltitude="size"
+          pointRadius={0.45}
+          pointLabel={d => `
+            <div style="background:rgba(0,0,0,0.85);padding:8px 12px;border-radius:8px;font-family:sans-serif;font-size:12px;color:#fff;border:1px solid rgba(255,255,255,0.15)">
+              <strong>${d.city.name}</strong> · ${d.contacts.length} contact${d.contacts.length !== 1 ? 's' : ''}
+            </div>
+          `}
+          onPointClick={handlePointClick}
+        />
 
         {/* Network overview — top left */}
         <div style={{
-          position: 'absolute', top: 16, left: 16, zIndex: 1000,
-          background: 'rgba(15,17,23,0.88)', backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(46,50,80,0.7)', borderRadius: 10,
+          position: 'absolute', top: 16, left: 16, zIndex: 10,
+          background: 'rgba(10,12,20,0.82)', backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
           padding: '14px 20px',
         }}>
-          <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.08em', marginBottom: 8, textTransform: 'uppercase' }}>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: 700, letterSpacing: '0.1em', marginBottom: 8, textTransform: 'uppercase' }}>
             Your Network
           </div>
-          <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text)', lineHeight: 1 }}>
+          <div style={{ fontSize: 34, fontWeight: 800, color: '#fff', lineHeight: 1 }}>
             {contacts.length}
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>
             {mappedCount > 0 ? `${mappedCount} mapped · ${pins.length} cit${pins.length !== 1 ? 'ies' : 'y'}` : 'contacts total'}
           </div>
         </div>
@@ -282,36 +246,38 @@ export default function Dashboard() {
 
         {/* Status legend — bottom left */}
         <div style={{
-          position: 'absolute', bottom: 48, left: 16, zIndex: 1000,
-          background: 'rgba(15,17,23,0.88)', backdropFilter: 'blur(10px)',
-          border: '1px solid rgba(46,50,80,0.7)', borderRadius: 10,
+          position: 'absolute', bottom: 48, left: 16, zIndex: 10,
+          background: 'rgba(10,12,20,0.82)', backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
           padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 6,
         }}>
           {Object.entries(STATUS_COLOR).map(([status, color]) => (
             <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 9, height: 9, borderRadius: '50%', background: color, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>{status}</span>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: color }} />
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)' }}>{status}</span>
             </div>
           ))}
         </div>
 
+        {/* Clicked pin popup */}
+        <PinPopup pin={selectedPin} onClose={() => setSelectedPin(null)} />
+
         {/* Scroll indicator */}
         <div style={{
           position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-          color: 'var(--muted)', opacity: 0.6, pointerEvents: 'none',
+          zIndex: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          color: 'rgba(255,255,255,0.35)', opacity: 0.8, pointerEvents: 'none',
         }}>
-          <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 500 }}>Overview</span>
+          <span style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 600 }}>Overview</span>
           <svg width="14" height="8" viewBox="0 0 14 8" fill="none">
             <path d="M1 1l6 6 6-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </div>
       </div>
 
-      {/* ── STATS SECTION ────────────────────────────────────────── */}
+      {/* ── STATS SECTION ─────────────────────────────────────── */}
       <div style={{ padding: '36px 28px', background: 'var(--bg)', minHeight: '100vh' }}>
 
-        {/* Headline stats */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
           <StatCard label="Total Contacts" value={stats?.total_contacts} />
           <StatCard label="Emails Sent" value={stats?.total_sent} />
@@ -321,7 +287,6 @@ export default function Dashboard() {
           <StatCard label="Meetings" value={stats?.meeting_scheduled} color="#c084fc" />
         </div>
 
-        {/* Pipeline + Daily cap */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 12, marginBottom: 20 }}>
           <div className="card">
             <div style={{ fontWeight: 600, marginBottom: 20, fontSize: 13 }}>Pipeline</div>
@@ -365,18 +330,13 @@ export default function Dashboard() {
                 }} />
               </div>
             </div>
-            <button
-              className="btn-secondary"
-              onClick={handleScan}
-              disabled={scanning}
-              style={{ width: '100%', padding: '13px', fontSize: 13 }}
-            >
+            <button className="btn-secondary" onClick={handleScan} disabled={scanning}
+              style={{ width: '100%', padding: '13px', fontSize: 13 }}>
               {scanning ? 'Scanning…' : 'Scan for Replies'}
             </button>
           </div>
         </div>
 
-        {/* Follow-up needed */}
         {followUpNeeded.length > 0 && (
           <div className="card">
             <div style={{ fontWeight: 600, marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
@@ -385,12 +345,7 @@ export default function Dashboard() {
             </div>
             <table>
               <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Firm</th>
-                  <th>Status</th>
-                  <th>Due</th>
-                </tr>
+                <tr><th>Name</th><th>Firm</th><th>Status</th><th>Due</th></tr>
               </thead>
               <tbody>
                 {followUpNeeded.map(c => (
@@ -412,7 +367,6 @@ export default function Dashboard() {
             </table>
           </div>
         )}
-
       </div>
     </div>
   )
