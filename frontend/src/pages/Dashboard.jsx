@@ -157,17 +157,36 @@ export default function Dashboard() {
     g.controls().dampingFactor = 0.1
     g.pointOfView({ lat: 30, lng: -20, altitude: 2.0 }, 0)
 
-    const mat = g.globeMaterial?.()
-    if (mat) {
-      mat.color?.setHex(0x060d1f)
-      mat.emissive?.setHex(0x020810)
+    const scene = g.scene()
+    const dir = sunDirection()
+
+    // Reposition three-globe's built-in directional light to come from the sun.
+    // This makes the globe's Phong material naturally bright on the day side.
+    const dirLight = scene.children.find(c => c.isDirectionalLight)
+    if (dirLight) {
+      dirLight.position.copy(dir.clone().multiplyScalar(300))
+      dirLight.intensity = 2.2
+    } else {
+      const l = new THREE.DirectionalLight(0xffffff, 2.2)
+      l.position.copy(dir.clone().multiplyScalar(300))
+      scene.add(l)
     }
 
-    // Night-side overlay using a custom shader sphere slightly above the globe surface.
-    // Sun direction is in globe model-space (Y=north pole, Z=prime meridian at UTC 12).
-    // Comparing in model-space means the terminator rotates correctly as the user spins the globe.
+    // Dim the ambient light so the night side is actually dark
+    const ambient = scene.children.find(c => c.isAmbientLight)
+    if (ambient) ambient.intensity = 0.08
+
+    // Globe material: mid-navy base so daylight pops and night stays dark
+    const mat = g.globeMaterial?.()
+    if (mat) {
+      mat.color?.setHex(0x0a1628)
+      mat.emissive?.setHex(0x000000)
+      mat.shininess = 8
+    }
+
+    // Thin dark overlay on the night side for a crisp terminator line
     const nightMat = new THREE.ShaderMaterial({
-      uniforms: { sunDir: { value: sunDirection() } },
+      uniforms: { sunDir: { value: dir.clone() } },
       vertexShader: `
         varying vec3 vPos;
         void main() {
@@ -180,9 +199,9 @@ export default function Dashboard() {
         varying vec3 vPos;
         void main() {
           float light = dot(vPos, normalize(sunDir));
-          if (light > 0.05) discard;
-          float alpha = 0.68 * smoothstep(0.05, -0.18, light);
-          gl_FragColor = vec4(0.01, 0.03, 0.10, alpha);
+          if (light > 0.0) discard;
+          float alpha = 0.55 * smoothstep(0.0, -0.2, light);
+          gl_FragColor = vec4(0.0, 0.01, 0.04, alpha);
         }
       `,
       transparent: true,
@@ -191,11 +210,15 @@ export default function Dashboard() {
     })
 
     const nightMesh = new THREE.Mesh(new THREE.SphereGeometry(100.1, 64, 32), nightMat)
-    g.scene().add(nightMesh)
+    scene.add(nightMesh)
 
-    sunTimerRef.current = setInterval(() => {
-      nightMat.uniforms.sunDir.value.copy(sunDirection())
-    }, 60000)
+    const update = () => {
+      const d = sunDirection()
+      nightMat.uniforms.sunDir.value.copy(d)
+      const dl = scene.children.find(c => c.isDirectionalLight)
+      if (dl) dl.position.copy(d.clone().multiplyScalar(300))
+    }
+    sunTimerRef.current = setInterval(update, 60000)
   }, [])
 
   function sunDirection() {
