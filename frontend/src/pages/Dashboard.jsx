@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo, memo } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, GeoJSON } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import terminator from 'leaflet-terminator'
 import { getStats, scanReplies, getContacts } from '../api/client'
 import { resolveCity } from '../lib/cityData'
 
@@ -76,26 +75,61 @@ function LiveClockPanel({ contacts }) {
   )
 }
 
-// ── Solar terminator overlay ──────────────────────────────────────────────────
-function NightOverlay() {
-  const map = useMap()
-  useEffect(() => {
-    const layer = terminator({
-      fillColor: '#0a0f2e',
-      fillOpacity: 0.48,
-      color: '#1e3a6e',
-      weight: 1.5,
-      opacity: 0.6,
-    })
-    layer.addTo(map)
-    const id = setInterval(() => layer.setTime(new Date()), 60000)
-    return () => { clearInterval(id); layer.remove() }
-  }, [map])
-  return null
+// ── Solar terminator — computed from first principles, no library needed ──────
+function nightGeoJSON(date) {
+  const ts = (date || new Date()).getTime()
+
+  // Days since J2000.0
+  const n = ts / 86400000 - 10957.5
+  // Solar mean anomaly (radians)
+  const g = (((357.528 + 0.9856003 * n) % 360 + 360) % 360) * (Math.PI / 180)
+  // Solar ecliptic longitude (radians)
+  const L = ((280.46 + 0.9856474 * n) % 360 + 360) % 360
+  const lambda = ((L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI) / 180
+  // Solar declination (radians)
+  const dec = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda))
+
+  // Sub-solar longitude: at UTC 12:00 the sun is near 0°, each hour shifts 15° west
+  const utcHours = (ts % 86400000) / 3600000
+  const subSolarLon = ((12 - utcHours) * 15 + 360) % 360 - 180  // -180..180
+
+  // For each longitude compute the terminator latitude:
+  // tan(φ) = -cos(H) / tan(δ)  where H = lon - subSolarLon
+  const EPS = 1e-6
+  const safeDec = Math.abs(dec) < EPS ? (dec >= 0 ? EPS : -EPS) : dec
+
+  const pts = []
+  for (let lon = -180; lon <= 180; lon += 1) {
+    const H = (lon - subSolarLon) * Math.PI / 180
+    const lat = Math.atan(-Math.cos(H) / Math.tan(safeDec)) * (180 / Math.PI)
+    pts.push([lon, lat])   // GeoJSON is [lng, lat]
+  }
+
+  // Close the polygon over the night-side pole
+  const poleLat = dec > 0 ? -90 : 90
+  const ring = [
+    [pts[0][0], poleLat],
+    ...pts,
+    [pts[pts.length - 1][0], poleLat],
+    [pts[0][0], poleLat],
+  ]
+
+  return {
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [ring] },
+    properties: {},
+  }
 }
 
 // ── Map — memoized so clock ticks don't cause re-renders ─────────────────────
 const ContactMap = memo(function ContactMap({ pins }) {
+  const [nightData, setNightData] = useState(() => nightGeoJSON())
+
+  useEffect(() => {
+    const id = setInterval(() => setNightData(nightGeoJSON()), 60000)
+    return () => clearInterval(id)
+  }, [])
+
   return (
     <MapContainer
       center={[30, -20]} zoom={2}
@@ -110,8 +144,12 @@ const ContactMap = memo(function ContactMap({ pins }) {
         attribution='Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA'
         maxZoom={19}
       />
-      {/* Day/night terminator */}
-      <NightOverlay />
+      {/* Night-side overlay — re-keyed each minute to force GeoJSON re-render */}
+      <GeoJSON
+        key={nightData.geometry.coordinates[0][1]?.[1]}
+        data={nightData}
+        style={{ fillColor: '#0a1628', fillOpacity: 0.52, color: '#2a4a8a', weight: 1.5, opacity: 0.7 }}
+      />
       {/* Place labels on top */}
       <TileLayer
         url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
