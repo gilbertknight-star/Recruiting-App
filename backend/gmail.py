@@ -150,6 +150,7 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
                     subject=f"[DEV → {email.get('to', '?')}] {email['subject']}",
                     body=f"--- DEV MODE: would send to {email.get('to', '?')} ---\n\n{email['body']}",
                     firm=email.get("firm", ""),
+                    scheduled_time=email.get("scheduled_time"),
                 )
                 results.append({"id": email["id"], "success": True, **result, "dev": True})
             except Exception as e:
