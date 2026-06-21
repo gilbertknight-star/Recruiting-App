@@ -155,41 +155,18 @@ export default function Dashboard() {
     g.controls().autoRotate = false
     g.controls().enableDamping = true
     g.controls().dampingFactor = 0.1
-    // Start the camera facing the sun so the day side is immediately visible
-    const sd = sunDirection()
-    const sunLat = Math.asin(sd.y) * (180 / Math.PI)
-    const sunLng = Math.atan2(sd.x, sd.z) * (180 / Math.PI)
+
+    // Face the sun on load
+    const dir = sunDirection()
+    const sunLat = Math.asin(dir.y) * (180 / Math.PI)
+    const sunLng = Math.atan2(dir.x, dir.z) * (180 / Math.PI)
     g.pointOfView({ lat: sunLat, lng: sunLng, altitude: 2.0 }, 0)
 
-    const scene = g.scene()
-    const dir = sunDirection()
-
-    // Reposition three-globe's built-in directional light to come from the sun.
-    // This makes the globe's Phong material naturally bright on the day side.
-    const dirLight = scene.children.find(c => c.isDirectionalLight)
-    if (dirLight) {
-      dirLight.position.copy(dir.clone().multiplyScalar(300))
-      dirLight.intensity = 2.2
-    } else {
-      const l = new THREE.DirectionalLight(0xffffff, 2.2)
-      l.position.copy(dir.clone().multiplyScalar(300))
-      scene.add(l)
-    }
-
-    // Dim the ambient light so the night side is actually dark
-    const ambient = scene.children.find(c => c.isAmbientLight)
-    if (ambient) ambient.intensity = 0.08
-
-    // Globe material: mid-navy base so daylight pops and night stays dark
-    const mat = g.globeMaterial?.()
-    if (mat) {
-      mat.color?.setHex(0x0a1628)
-      mat.emissive?.setHex(0x000000)
-      mat.shininess = 8
-    }
-
-    // Thin dark overlay on the night side for a crisp terminator line
-    const nightMat = new THREE.ShaderMaterial({
+    // Replace the globe material with a shader that computes day/night directly.
+    // MeshBasicMaterial (used when globeImageUrl is empty) ignores lights, so
+    // lighting-based approaches never work. The shader computes brightness purely
+    // from the dot product of the surface normal with the sun direction vector.
+    const dayNightMat = new THREE.ShaderMaterial({
       uniforms: { sunDir: { value: dir.clone() } },
       vertexShader: `
         varying vec3 vPos;
@@ -203,26 +180,21 @@ export default function Dashboard() {
         varying vec3 vPos;
         void main() {
           float light = dot(vPos, normalize(sunDir));
-          if (light > 0.0) discard;
-          float alpha = 0.55 * smoothstep(0.0, -0.2, light);
-          gl_FragColor = vec4(0.0, 0.01, 0.04, alpha);
+          float t = smoothstep(-0.12, 0.2, light);
+          vec3 night = vec3(0.012, 0.022, 0.055);
+          vec3 day   = vec3(0.055, 0.14, 0.30);
+          gl_FragColor = vec4(mix(night, day, t), 1.0);
         }
       `,
-      transparent: true,
-      depthWrite: false,
-      side: THREE.FrontSide,
     })
 
-    const nightMesh = new THREE.Mesh(new THREE.SphereGeometry(100.1, 64, 32), nightMat)
-    scene.add(nightMesh)
-
-    const update = () => {
-      const d = sunDirection()
-      nightMat.uniforms.sunDir.value.copy(d)
-      const dl = scene.children.find(c => c.isDirectionalLight)
-      if (dl) dl.position.copy(d.clone().multiplyScalar(300))
+    if (typeof g.globeMaterial === 'function') {
+      g.globeMaterial(dayNightMat)
     }
-    sunTimerRef.current = setInterval(update, 60000)
+
+    sunTimerRef.current = setInterval(() => {
+      dayNightMat.uniforms.sunDir.value.copy(sunDirection())
+    }, 60000)
   }, [])
 
   function sunDirection() {
