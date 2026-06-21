@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import Globe from 'react-globe.gl'
 import { feature } from 'topojson-client'
+import * as THREE from 'three'
 import { getStats, scanReplies, getContacts } from '../api/client'
 import { resolveCity } from '../lib/cityData'
 
@@ -120,6 +121,7 @@ function PinPopup({ pin, onClose }) {
 export default function Dashboard() {
   const globeRef = useRef()
   const containerRef = useRef()
+  const sunTimerRef = useRef(null)
   const [dims, setDims] = useState({ w: window.innerWidth, h: window.innerHeight })
   const [stats, setStats] = useState(null)
   const [contacts, setContacts] = useState([])
@@ -134,6 +136,7 @@ export default function Dashboard() {
       .then(r => r.json())
       .then(world => setCountries(feature(world, world.objects.countries).features))
       .catch(() => {})
+    return () => { if (sunTimerRef.current) clearInterval(sunTimerRef.current) }
   }, [])
 
   useEffect(() => {
@@ -153,13 +156,63 @@ export default function Dashboard() {
     g.controls().enableDamping = true
     g.controls().dampingFactor = 0.1
     g.pointOfView({ lat: 30, lng: -20, altitude: 2.0 }, 0)
-    // Darken the globe sphere material
+
     const mat = g.globeMaterial?.()
     if (mat) {
       mat.color?.setHex(0x060d1f)
       mat.emissive?.setHex(0x020810)
     }
+
+    // Night-side overlay using a custom shader sphere slightly above the globe surface.
+    // Sun direction is in globe model-space (Y=north pole, Z=prime meridian at UTC 12).
+    // Comparing in model-space means the terminator rotates correctly as the user spins the globe.
+    const nightMat = new THREE.ShaderMaterial({
+      uniforms: { sunDir: { value: sunDirection() } },
+      vertexShader: `
+        varying vec3 vPos;
+        void main() {
+          vPos = normalize(position);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 sunDir;
+        varying vec3 vPos;
+        void main() {
+          float light = dot(vPos, normalize(sunDir));
+          if (light > 0.05) discard;
+          float alpha = 0.68 * smoothstep(0.05, -0.18, light);
+          gl_FragColor = vec4(0.01, 0.03, 0.10, alpha);
+        }
+      `,
+      transparent: true,
+      depthWrite: false,
+      side: THREE.FrontSide,
+    })
+
+    const nightMesh = new THREE.Mesh(new THREE.SphereGeometry(100.1, 64, 32), nightMat)
+    g.scene().add(nightMesh)
+
+    sunTimerRef.current = setInterval(() => {
+      nightMat.uniforms.sunDir.value.copy(sunDirection())
+    }, 60000)
   }, [])
+
+  function sunDirection() {
+    const ts = Date.now()
+    const n = ts / 86400000 - 10957.5
+    const g = (((357.528 + 0.9856003 * n) % 360 + 360) % 360) * (Math.PI / 180)
+    const L = ((280.46 + 0.9856474 * n) % 360 + 360) % 360
+    const lambda = ((L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * Math.PI) / 180
+    const dec = Math.asin(Math.sin(23.439 * Math.PI / 180) * Math.sin(lambda))
+    const utcH = (ts % 86400000) / 3600000
+    const lon = ((12 - utcH) * 15 * Math.PI) / 180
+    return new THREE.Vector3(
+      Math.cos(dec) * Math.sin(lon),
+      Math.sin(dec),
+      Math.cos(dec) * Math.cos(lon),
+    )
+  }
 
   const pins = useMemo(() => {
     const groups = {}
