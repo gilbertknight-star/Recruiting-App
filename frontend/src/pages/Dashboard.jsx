@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import Globe from 'react-globe.gl'
+import { feature } from 'topojson-client'
 import { getStats, scanReplies, getContacts } from '../api/client'
 import { resolveCity } from '../lib/cityData'
 
@@ -124,13 +125,17 @@ export default function Dashboard() {
   const [contacts, setContacts] = useState([])
   const [scanning, setScanning] = useState(false)
   const [selectedPin, setSelectedPin] = useState(null)
+  const [countries, setCountries] = useState([])
 
   useEffect(() => {
     getStats().then(setStats).catch(() => setStats({}))
     getContacts().then(setContacts).catch(() => setContacts([]))
+    fetch('https://unpkg.com/world-atlas@2/countries-110m.json')
+      .then(r => r.json())
+      .then(world => setCountries(feature(world, world.objects.countries).features))
+      .catch(() => {})
   }, [])
 
-  // Track container size for the globe
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -141,14 +146,19 @@ export default function Dashboard() {
     return () => ro.disconnect()
   }, [])
 
-  // Slow auto-rotation
-  useEffect(() => {
-    const globe = globeRef.current
-    if (!globe) return
-    globe.controls().autoRotate = true
-    globe.controls().autoRotateSpeed = 0.4
-    globe.controls().enableDamping = true
-    globe.pointOfView({ altitude: 2.2 }, 0)
+  const handleGlobeReady = useCallback(() => {
+    const g = globeRef.current
+    if (!g) return
+    g.controls().autoRotate = false
+    g.controls().enableDamping = true
+    g.controls().dampingFactor = 0.1
+    g.pointOfView({ lat: 30, lng: -20, altitude: 2.0 }, 0)
+    // Darken the globe sphere material
+    const mat = g.globeMaterial?.()
+    if (mat) {
+      mat.color?.setHex(0x060d1f)
+      mat.emissive?.setHex(0x020810)
+    }
   }, [])
 
   const pins = useMemo(() => {
@@ -198,16 +208,20 @@ export default function Dashboard() {
     <div style={{ margin: '-32px -28px' }}>
 
       {/* ── GLOBE HERO ─────────────────────────────────────────── */}
-      <div ref={containerRef} style={{ position: 'relative', height: '100vh', background: '#000' }}>
+      <div ref={containerRef} style={{ position: 'relative', height: '100vh', background: '#080e1f' }}>
         <Globe
           ref={globeRef}
           width={dims.w}
           height={dims.h}
-          globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
-          backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-          showAtmosphere={true}
-          atmosphereColor="#00ffe0"
-          atmosphereAltitude={0.12}
+          backgroundColor="#080e1f"
+          showAtmosphere={false}
+          globeImageUrl=""
+          onGlobeReady={handleGlobeReady}
+          polygonsData={countries}
+          polygonCapColor={() => 'rgba(8, 18, 42, 0.85)'}
+          polygonSideColor={() => 'rgba(0,0,0,0)'}
+          polygonStrokeColor={() => 'rgba(80, 160, 255, 0.22)'}
+          polygonAltitude={0.002}
           pointsData={pins}
           pointLat="lat"
           pointLng="lng"
@@ -215,7 +229,7 @@ export default function Dashboard() {
           pointAltitude="size"
           pointRadius={0.45}
           pointLabel={d => `
-            <div style="background:rgba(0,0,0,0.85);padding:8px 12px;border-radius:8px;font-family:sans-serif;font-size:12px;color:#fff;border:1px solid rgba(255,255,255,0.15)">
+            <div style="background:rgba(5,10,25,0.92);padding:8px 12px;border-radius:8px;font-family:sans-serif;font-size:12px;color:#fff;border:1px solid rgba(80,160,255,0.2)">
               <strong>${d.city.name}</strong> · ${d.contacts.length} contact${d.contacts.length !== 1 ? 's' : ''}
             </div>
           `}
