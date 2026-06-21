@@ -203,12 +203,11 @@ export default function Dashboard() {
           ref={globeRef}
           width={dims.w}
           height={dims.h}
-          globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
-          bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
+          globeImageUrl="//unpkg.com/three-globe/example/img/earth-dark.jpg"
           backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
           showAtmosphere={true}
-          atmosphereColor="#4a90d9"
-          atmosphereAltitude={0.18}
+          atmosphereColor="#00ffe0"
+          atmosphereAltitude={0.12}
           pointsData={pins}
           pointLat="lat"
           pointLng="lng"
