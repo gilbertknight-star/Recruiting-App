@@ -155,7 +155,11 @@ export default function Dashboard() {
     g.controls().autoRotate = false
     g.controls().enableDamping = true
     g.controls().dampingFactor = 0.1
-    g.pointOfView({ lat: 30, lng: -20, altitude: 2.0 }, 0)
+    // Start the camera facing the sun so the day side is immediately visible
+    const sd = sunDirection()
+    const sunLat = Math.asin(sd.y) * (180 / Math.PI)
+    const sunLng = Math.atan2(sd.x, sd.z) * (180 / Math.PI)
+    g.pointOfView({ lat: sunLat, lng: sunLng, altitude: 2.0 }, 0)
 
     const scene = g.scene()
     const dir = sunDirection()
