@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, memo } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
+import terminator from 'leaflet-terminator'
 import { getStats, scanReplies, getContacts } from '../api/client'
 import { resolveCity } from '../lib/cityData'
 
@@ -75,20 +76,48 @@ function LiveClockPanel({ contacts }) {
   )
 }
 
+// ── Solar terminator overlay ──────────────────────────────────────────────────
+function NightOverlay() {
+  const map = useMap()
+  useEffect(() => {
+    const layer = terminator({
+      fillColor: '#0a0f2e',
+      fillOpacity: 0.48,
+      color: '#1e3a6e',
+      weight: 1.5,
+      opacity: 0.6,
+    })
+    layer.addTo(map)
+    const id = setInterval(() => layer.setTime(new Date()), 60000)
+    return () => { clearInterval(id); layer.remove() }
+  }, [map])
+  return null
+}
+
 // ── Map — memoized so clock ticks don't cause re-renders ─────────────────────
 const ContactMap = memo(function ContactMap({ pins }) {
   return (
     <MapContainer
-      center={[38, -97]} zoom={4}
+      center={[30, -20]} zoom={2}
       style={{ height: '100%', width: '100%' }}
       zoomControl={true}
       attributionControl={true}
+      minZoom={2}
     >
+      {/* Satellite base */}
       <TileLayer
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+        attribution='Tiles &copy; Esri &mdash; Source: Esri, USGS, NOAA'
+        maxZoom={19}
+      />
+      {/* Day/night terminator */}
+      <NightOverlay />
+      {/* Place labels on top */}
+      <TileLayer
+        url="https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png"
         subdomains="abcd"
         maxZoom={19}
+        opacity={0.7}
       />
       {pins.map((pin, i) => {
         const status = bestStatus(pin.contacts)
