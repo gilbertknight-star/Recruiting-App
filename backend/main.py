@@ -185,7 +185,8 @@ def generate_batch_custom_endpoint(req: CustomBatchRequest, user=Depends(get_cur
             body = result["body"]
             sig = settings.get("signature", "").strip()
             if sig:
-                body = f"{body}\n\n{sig}"
+                sep = '<p style="margin:16px 0 4px 0;color:#666">--</p>'
+                body = f"{body}{sep}{sig}"
             update_contact(user.id, contact["id"], {"generated_email": body})
             results.append({"id": contact["id"], "success": True})
         except Exception as e:

@@ -37,8 +37,8 @@ def append_signature(body: str, settings: dict) -> str:
     sig = settings.get("signature", "").strip()
     if not sig:
         return body
-    # Both may be HTML or plain text — use HR separator
-    sep = '<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0">'
+    # Separator: two dashes on their own line, matching professional email convention
+    sep = '<p style="margin:16px 0 4px 0;color:#666">--</p>'
     return f"{body}{sep}{sig}"
 
 

@@ -107,7 +107,7 @@ _settings: dict = {
     "sender_school": "University of Oregon",
     "attachments": [],
     "availability": "Monday through Friday, 9am to 5pm PST",
-    "signature": "Best,\nGilbert Knight\nUniversity of Oregon | Mathematics & Finance",
+    "signature": "<p>Best,</p><p><strong>Gilbert Knight</strong><br>Senior Analyst | University of Oregon Investment Group<br>Research Analyst | University of Oregon Quant Group<br>University of Oregon '29<br>(503) 858-4401 &middot; <a href=\"mailto:gilbert.knight@gmail.com\">gilbert.knight@gmail.com</a><br><a href=\"https://www.linkedin.com/in/gilbert-knight\" target=\"_blank\">LinkedIn</a></p>",
     "today_sent": 7,
     "total_sent": 32,
     "last_reset_date": date.today().isoformat(),

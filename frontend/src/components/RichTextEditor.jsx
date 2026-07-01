@@ -19,6 +19,25 @@ export default function RichTextEditor({ value, onChange, style = {}, placeholde
     emitChange()
   }
 
+  function insertLink() {
+    const url = prompt('Enter URL:', 'https://')
+    if (!url) return
+    ref.current?.focus()
+    document.execCommand('createLink', false, url)
+    // Make links open in new tab
+    ref.current?.querySelectorAll('a').forEach(a => {
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+    })
+    emitChange()
+  }
+
+  function removeLink() {
+    ref.current?.focus()
+    document.execCommand('unlink', false, null)
+    emitChange()
+  }
+
   function emitChange() {
     isInternalChange.current = true
     onChange(ref.current?.innerHTML || '')
@@ -48,6 +67,13 @@ export default function RichTextEditor({ value, onChange, style = {}, placeholde
         <button type="button" onMouseDown={e => { e.preventDefault(); exec('bold') }} style={btnStyle()}><b>B</b></button>
         <button type="button" onMouseDown={e => { e.preventDefault(); exec('italic') }} style={btnStyle()}><i>I</i></button>
         <button type="button" onMouseDown={e => { e.preventDefault(); exec('underline') }} style={btnStyle()}><u>U</u></button>
+        <div style={{ width: 1, background: 'var(--border)', margin: '0 4px', alignSelf: 'stretch' }} />
+        <button type="button" onMouseDown={e => { e.preventDefault(); insertLink() }} style={btnStyle()} title="Insert link">
+          Link
+        </button>
+        <button type="button" onMouseDown={e => { e.preventDefault(); removeLink() }} style={{ ...btnStyle(), fontSize: 11 }} title="Remove link">
+          Unlink
+        </button>
         <span style={{ color: 'var(--muted)', fontSize: 11, marginLeft: 6, alignSelf: 'center' }}>
           Ctrl+B · Ctrl+I · Ctrl+U
         </span>
@@ -75,6 +101,7 @@ export default function RichTextEditor({ value, onChange, style = {}, placeholde
           pointer-events: none;
         }
         [contenteditable]:focus { border-color: var(--accent); }
+        [contenteditable] a { color: var(--accent); text-decoration: underline; }
       `}</style>
     </div>
   )
