@@ -46,3 +46,7 @@ export const getGmailAuthUrl = () => api.get('/gmail/auth-url').then(r => r.data
 export const getGmailStatus = () => api.get('/gmail/status').then(r => r.data)
 
 export const inviteUser = (email) => api.post(`/invite?email=${encodeURIComponent(email)}`).then(r => r.data)
+
+export const getScheduled = () => api.get('/scheduled').then(r => r.data)
+export const browseFile = () => api.get('/browse-file').then(r => r.data)
+export const sendTestEmail = (subject, body) => api.post('/send-test', { subject, body }).then(r => r.data)

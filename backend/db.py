@@ -17,31 +17,45 @@ else:
 DEFAULT_TEMPLATES = [
     {
         "tier": "analyst_associate",
-        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nBest,\nGilbert\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
         "subject": "UOregon Freshman - Gilbert Knight",
         "tone": "professional but warm",
         "max_words": 100,
     },
     {
         "tier": "vp",
-        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nBest,\nGilbert\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
         "subject": "UOregon Freshman - Gilbert Knight",
         "tone": "professional and brief",
         "max_words": 100,
     },
     {
         "tier": "md_partner",
-        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nBest,\nGilbert\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
         "subject": "UOregon Freshman - Gilbert Knight",
         "tone": "concise and respectful",
         "max_words": 100,
     },
     {
         "tier": "n_a",
-        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nBest,\nGilbert\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "prompt": "Write a cold networking email from Gilbert Knight. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI'm reaching out because I'm hoping to learn more about your path and your experience at {firm}. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect for a brief chat and hear your perspective.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
         "subject": "UOregon Freshman - Gilbert Knight",
         "tone": "professional but warm",
         "max_words": 100,
+    },
+    {
+        "tier": "uoig_alum",
+        "prompt": "Write a warm networking email from Gilbert Knight to a University of Oregon Investment Group (UOIG) alumnus. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon — I'm currently a Senior Analyst at the Oregon Investment Group.\n\nI came across your profile and wanted to reach out as a fellow UOIG member. I'd love to hear about your experience at {firm} and any advice you might have for someone earlier in their career. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "subject": "Fellow UOIG Member - Gilbert Knight",
+        "tone": "warm and collegial",
+        "max_words": 120,
+    },
+    {
+        "tier": "uo_alum",
+        "prompt": "Write a warm networking email from Gilbert Knight to a University of Oregon alumnus. Output ONLY the email body, exactly in this format with blank lines between each paragraph:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a freshman at the University of Oregon studying Mathematics and Finance.\n\nI came across your profile and as a fellow Duck I wanted to reach out. I'd love to hear about your experience at {firm} and any advice you might have. If you have a few minutes in the coming weeks, I'd really appreciate the chance to connect.\n\nI have attached my resume and a recent report for the Oregon Investment Group.{availability_line}\n\nDo not add any other sentences, do not change the structure, do not add a subject line. Only personalize by using the correct name and firm.",
+        "subject": "Fellow Duck - Gilbert Knight",
+        "tone": "warm and collegial",
+        "max_words": 120,
     },
 ]
 

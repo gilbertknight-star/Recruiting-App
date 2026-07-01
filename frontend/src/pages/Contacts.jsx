@@ -136,7 +136,7 @@ export default function Contacts() {
       return c && c.generated_email && c.tier !== 'md_partner'
     })
     if (!sendable.length) {
-      setMsg('No sendable emails — generate drafts first, and MD/Partner contacts must be sent manually')
+      setMsg('Nothing to send — MD/Partner contacts must be sent manually')
       return
     }
     setLoading(true)
@@ -145,11 +145,17 @@ export default function Contacts() {
         ? { schedule_date: scheduleDate, schedule_time: scheduleTime }
         : {}
       const results = await sendEmails(sendable, options)
-      const sent = results.filter(r => r.success).length
-      setMsg(scheduleDate
-        ? `Scheduled ${sent} email${sent !== 1 ? 's' : ''} for ${scheduleTime} recipient local time`
-        : `Sent ${sent} / ${sendable.length}`)
+      const scheduled = results.filter(r => r.scheduled).length
+      const sentNow = results.filter(r => r.success && !r.scheduled).length
+      if (scheduleDate) {
+        setMsg(`Scheduled ${scheduled} email${scheduled !== 1 ? 's' : ''} for ${scheduleTime} recipient local time${sentNow ? ` · ${sentNow} sent immediately (past time)` : ''}`)
+      } else {
+        setMsg(`Sent ${sentNow} / ${sendable.length}`)
+      }
       loadContacts()
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setMsg(detail || 'Send failed')
     } finally {
       setLoading(false)
     }
@@ -157,14 +163,38 @@ export default function Contacts() {
 
   async function handleSendSelected() {
     const selectedContacts = [...selected].map(id => contacts.find(c => c.id === id)).filter(Boolean)
-    const unreviewedSenior = selectedContacts.filter(c =>
-      c.generated_email && (c.tier === 'vp' || c.tier === 'md_partner') && !reviewed.has(c.id)
+
+    // Auto-generate emails for any contacts that don't have a draft yet
+    const needGenerate = selectedContacts.filter(c => !c.generated_email)
+    let currentContacts = contacts
+
+    if (needGenerate.length > 0) {
+      setLoading(true)
+      setMsg(`Generating ${needGenerate.length} draft${needGenerate.length !== 1 ? 's' : ''}…`)
+      const updates = {}
+      for (const contact of needGenerate) {
+        try {
+          const result = await generateEmail(contact.id)
+          updates[contact.id] = { ...contact, generated_email: result.body, generated_subject: result.subject }
+        } catch {}
+      }
+      currentContacts = contacts.map(c => updates[c.id] || c)
+      setContacts(currentContacts)
+      setMsg('')
+      setLoading(false)
+    }
+
+    // Route VP/MD contacts with unreviewed drafts into the review queue
+    const allSelected = [...selected].map(id => currentContacts.find(c => c.id === id)).filter(c => c?.generated_email)
+    const unreviewedSenior = allSelected.filter(c =>
+      (c.tier === 'vp' || c.tier === 'md_partner') && !reviewed.has(c.id)
     )
     if (unreviewedSenior.length > 0) {
       setReviewQueue(unreviewedSenior)
       setSendAfterReview(true)
       return
     }
+
     setSendModal(true)
   }
 
@@ -355,7 +385,7 @@ export default function Contacts() {
                   <div>{c.title}</div>
                   <div style={{ color: 'var(--muted)', fontSize: 12 }}>{c.firm}{c.location ? ` · ${c.location}` : ''}</div>
                 </td>
-                <td><TierBadge tier={c.tier} /></td>
+                <td><TierBadge tier={c.tier} alumni={c.alumni} level={c.level} /></td>
                 <td>
                   <select value={c.status} onChange={e => {
                     patchContact(c.id, { status: e.target.value })
@@ -365,7 +395,7 @@ export default function Contacts() {
                   </select>
                 </td>
                 <td style={{ color: 'var(--muted)' }}>
-                  {c.sent_at ? new Date(c.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
+                  {c.sent_at ? new Date(c.sent_at + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—'}
                 </td>
                 <td style={{ color: c.follow_up_due && new Date(c.follow_up_due + 'T12:00:00') <= new Date() ? 'var(--yellow)' : 'var(--muted)' }}>
                   {c.follow_up_due || '—'}

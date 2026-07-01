@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus } from '../api/client'
+import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile } from '../api/client'
 import RichTextEditor, { plainToHtml } from '../components/RichTextEditor'
 
 export default function Settings() {
@@ -78,23 +78,54 @@ export default function Settings() {
               <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Leave blank to omit from emails.</p>
             </div>
             <div>
+              <label style={lbl}>LinkedIn URL</label>
+              {settings.linkedin_url ? (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '7px 10px', borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)', background: 'var(--surface2)',
+                    fontSize: 12, color: 'var(--accent)', overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}>
+                    {settings.linkedin_url}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => set('linkedin_url', '')}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', padding: '0 10px', cursor: 'pointer', flexShrink: 0, fontSize: 16, lineHeight: '32px' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >✕</button>
+                </div>
+              ) : (
+                <input
+                  value={settings.linkedin_url || ''}
+                  onChange={e => set('linkedin_url', e.target.value)}
+                  placeholder="https://www.linkedin.com/in/your-name"
+                />
+              )}
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>Used in your email signature.</p>
+            </div>
+            <div>
               <label style={lbl}>Attachments (sent with every email)</label>
-              {(settings.attachments || []).map((path, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
-                  <input
-                    value={path}
-                    onChange={e => {
-                      const updated = [...(settings.attachments || [])]
-                      updated[i] = e.target.value
-                      set('attachments', updated)
-                    }}
-                    placeholder={`C:\\Users\\you\\Documents\\resume.pdf`}
-                    style={{ flex: 1 }}
-                  />
+              {(settings.attachments || []).filter(Boolean).map((path, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                  <div style={{
+                    flex: 1, padding: '7px 10px', borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)', background: 'var(--surface2)',
+                    fontSize: 12, color: 'var(--text)', overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    title: path,
+                  }}>
+                    {path.split(/[\\/]/).pop()}
+                    <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
+                      {path.substring(0, path.lastIndexOf('\\') + 1) || path.substring(0, path.lastIndexOf('/') + 1)}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     onClick={() => set('attachments', (settings.attachments || []).filter((_, j) => j !== i))}
-                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', padding: '0 10px', cursor: 'pointer', flexShrink: 0, fontSize: 16, lineHeight: 1 }}
+                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', padding: '0 10px', cursor: 'pointer', flexShrink: 0, fontSize: 16, lineHeight: '32px' }}
                     onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
                     onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
                   >✕</button>
@@ -103,10 +134,13 @@ export default function Settings() {
               <button
                 type="button"
                 className="btn-secondary btn-sm"
-                onClick={() => set('attachments', [...(settings.attachments || []), ''])}
+                onClick={async () => {
+                  const r = await browseFile()
+                  if (r.path) set('attachments', [...(settings.attachments || []).filter(Boolean), r.path])
+                }}
                 style={{ marginTop: 4 }}
-              >+ Add File</button>
-              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>Full file path on your computer. Attached to every outgoing email.</p>
+              >+ Browse for File</button>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>Opens file explorer. Selected files are attached to every outgoing email.</p>
             </div>
           </div>
 

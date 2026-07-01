@@ -28,9 +28,17 @@ const TIER_LABELS = {
   n_a: 'N/A',
 }
 
+const LEVELS = [
+  '',
+  '1st Year Analyst', '2nd Year Analyst', '3rd Year Analyst',
+  '1st Year Associate', '2nd Year Associate', 'Senior Associate',
+  'VP', 'Senior VP', 'Director',
+  'Managing Director', 'Partner', 'Principal',
+]
+
 const empty = {
   name: '', email: '', title: '', firm: '',
-  linkedin_url: '', school: '', location: '', notes: '', tier: 'analyst_associate',
+  linkedin_url: '', school: '', location: '', notes: '', tier: 'analyst_associate', alumni: '', level: '',
 }
 
 export default function AddContactModal({ onClose, onSaved, editContact }) {
@@ -95,6 +103,18 @@ export default function AddContactModal({ onClose, onSaved, editContact }) {
           </Field>
           <Field label="LinkedIn URL">
             <input value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="linkedin.com/in/jsmith" />
+          </Field>
+          <Field label="Alumni Label">
+            <select value={form.alumni || ''} onChange={e => set('alumni', e.target.value || null)}>
+              <option value="">None</option>
+              <option value="uoig_alum">UOIG Alum</option>
+              <option value="uo_alum">UO Alum</option>
+            </select>
+          </Field>
+          <Field label="Level">
+            <select value={form.level || ''} onChange={e => set('level', e.target.value || null)}>
+              {LEVELS.map(l => <option key={l} value={l}>{l || 'Not specified'}</option>)}
+            </select>
           </Field>
           <Field label="Tier">
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

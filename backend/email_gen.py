@@ -33,17 +33,31 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
     )
 
 
+def _plain_to_html(text: str) -> str:
+    paragraphs = text.strip().split('\n\n')
+    return ''.join(f'<p style="margin:0 0 12px 0">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs)
+
+
 def append_signature(body: str, settings: dict) -> str:
     sig = settings.get("signature", "").strip()
-    if not sig:
-        return body
-    # Separator: two dashes on their own line, matching professional email convention
+    linkedin_url = settings.get("linkedin_url", "").strip()
+    if sig and linkedin_url:
+        import re
+        sig = re.sub(
+            r'href="https?://(?:www\.)?linkedin\.com/in/[^"]*"',
+            f'href="{linkedin_url}"',
+            sig,
+        )
+    if not body.strip().startswith('<'):
+        body = _plain_to_html(body)
     sep = '<p style="margin:16px 0 4px 0;color:#666">--</p>'
-    return f"{body}{sep}{sig}"
+    content = f"{body}{sep}{sig}" if sig else body
+    return f'<div style="font-family:sans-serif;font-size:14px;line-height:1.6">{content}</div>'
 
 
 def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
-    tier = contact.get("tier", "analyst_associate")
+    alumni = contact.get("alumni")
+    tier = alumni if alumni and alumni in templates else contact.get("tier", "analyst_associate")
     template = templates.get(tier, templates.get("analyst_associate", {}))
     if not template:
         raise Exception("No template found for tier")

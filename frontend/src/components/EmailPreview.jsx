@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { generateEmail, patchContact } from '../api/client'
+import { generateEmail, patchContact, sendTestEmail } from '../api/client'
 import TierBadge from './TierBadge'
 import RichTextEditor, { plainToHtml } from './RichTextEditor'
 
@@ -8,6 +8,7 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
   const [body, setBody] = useState(plainToHtml(contact.generated_email || ''))
   const [loading, setLoading] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [testState, setTestState] = useState('idle') // idle | sending | sent | error
 
   async function regenerate() {
     setLoading(true)
@@ -18,6 +19,18 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
       setSaved(false)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function sendTest() {
+    setTestState('sending')
+    try {
+      await sendTestEmail(subject, body)
+      setTestState('sent')
+      setTimeout(() => setTestState('idle'), 3000)
+    } catch {
+      setTestState('error')
+      setTimeout(() => setTestState('idle'), 3000)
     }
   }
 
@@ -71,6 +84,17 @@ export default function EmailPreview({ contact, onClose, onSaved }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button className="btn-secondary" onClick={regenerate} disabled={loading}>
             {loading ? 'Generating…' : 'Regenerate'}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={sendTest}
+            disabled={testState === 'sending'}
+            style={{
+              color: testState === 'sent' ? 'var(--green)' : testState === 'error' ? 'var(--red)' : 'var(--accent)',
+              borderColor: testState === 'sent' ? 'var(--green)' : testState === 'error' ? 'var(--red)' : undefined,
+            }}
+          >
+            {testState === 'sending' ? 'Sending…' : testState === 'sent' ? 'Test sent!' : testState === 'error' ? 'Failed' : 'Send Test to Myself'}
           </button>
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
             {saved && <span style={{ fontSize: 12, color: 'var(--green)' }}>Saved</span>}

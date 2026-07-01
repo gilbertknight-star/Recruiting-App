@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { generateEmail, patchContact } from '../api/client'
 import TierBadge from './TierBadge'
+import RichTextEditor from './RichTextEditor'
 
 const TIER_NOTICE = {
   vp: { color: '#eab308', text: 'Review required before sending' },
@@ -109,17 +110,10 @@ export default function ReviewQueue({ contacts, onClose, onCancel, onSaved }) {
         {/* Body */}
         <div style={{ marginBottom: 20 }}>
           <label style={lbl}>Email Body</label>
-          <textarea
+          <RichTextEditor
             value={draft.body}
-            onChange={e => setDraft(contact.id, 'body', e.target.value)}
-            rows={16}
-            style={{
-              resize: 'vertical',
-              fontFamily: 'inherit',
-              fontSize: 14,
-              lineHeight: 1.7,
-              padding: '12px 14px',
-            }}
+            onChange={v => setDraft(contact.id, 'body', v)}
+            style={{ minHeight: 280 }}
           />
         </div>
 

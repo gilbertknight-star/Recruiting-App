@@ -1,24 +1,22 @@
 import { useState } from 'react'
 
-const TIMES = []
-for (let h = 6; h <= 20; h++) {
-  for (let m of [0, 30]) {
-    const hour12 = h % 12 || 12
-    const ampm = h < 12 ? 'AM' : 'PM'
-    const label = `${hour12}:${String(m).padStart(2, '0')} ${ampm}`
-    const value = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-    TIMES.push({ label, value })
-  }
+function dateStr(offsetDays = 0) {
+  const d = new Date()
+  d.setDate(d.getDate() + offsetDays)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function todayStr() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function formatTime(value) {
+  if (!value) return ''
+  const [h, m] = value.split(':').map(Number)
+  const ampm = h < 12 ? 'AM' : 'PM'
+  const hour12 = h % 12 || 12
+  return `${hour12}:${String(m).padStart(2, '0')} ${ampm}`
 }
 
 export default function SendModal({ count, onSendNow, onSchedule, onCancel }) {
   const [mode, setMode] = useState('now')
-  const [date, setDate] = useState(todayStr())
+  const [date, setDate] = useState(dateStr(0))   // default today
   const [time, setTime] = useState('09:00')
 
   function handleConfirm() {
@@ -28,8 +26,6 @@ export default function SendModal({ count, onSendNow, onSchedule, onCancel }) {
       onSchedule(date, time)
     }
   }
-
-  const selectedTime = TIMES.find(t => t.value === time)
 
   return (
     <div style={overlay}>
@@ -70,7 +66,7 @@ export default function SendModal({ count, onSendNow, onSchedule, onCancel }) {
         {mode === 'schedule' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
             <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
-              Each email will be scheduled to arrive at <strong style={{ color: 'var(--text)' }}>{selectedTime?.label}</strong> in the recipient's local timezone based on their location. Contacts with unknown locations default to Eastern Time.
+              Emails will arrive at <strong style={{ color: 'var(--text)' }}>{formatTime(time)}</strong> in each recipient's local timezone. Note: this is <em>their</em> time, not yours — a 9:00 AM Eastern send fires at 6:00 AM Pacific. Contacts with unknown locations default to Eastern.
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
@@ -79,18 +75,19 @@ export default function SendModal({ count, onSendNow, onSchedule, onCancel }) {
                 <input
                   type="date"
                   value={date}
-                  min={todayStr()}
+                  min={dateStr(0)}
                   onChange={e => setDate(e.target.value)}
                   style={{ fontSize: 14 }}
                 />
               </div>
               <div>
                 <label style={lbl}>Local Time</label>
-                <select value={time} onChange={e => setTime(e.target.value)} style={{ fontSize: 14 }}>
-                  {TIMES.map(t => (
-                    <option key={t.value} value={t.value}>{t.label}</option>
-                  ))}
-                </select>
+                <input
+                  type="time"
+                  value={time}
+                  onChange={e => setTime(e.target.value)}
+                  style={{ fontSize: 14 }}
+                />
               </div>
             </div>
           </div>
@@ -100,7 +97,7 @@ export default function SendModal({ count, onSendNow, onSchedule, onCancel }) {
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
           <button className="btn-secondary" onClick={onCancel}>Cancel</button>
           <button className="btn-primary" onClick={handleConfirm} style={{ minWidth: 140 }}>
-            {mode === 'now' ? `Send ${count} Email${count !== 1 ? 's' : ''}` : `Schedule for ${selectedTime?.label}`}
+            {mode === 'now' ? `Send ${count} Email${count !== 1 ? 's' : ''}` : `Schedule for ${formatTime(time)}`}
           </button>
         </div>
 

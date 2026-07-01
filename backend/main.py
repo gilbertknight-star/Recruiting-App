@@ -17,10 +17,16 @@ from email_gen import generate_email, generate_batch, compose_free
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
-    is_gmail_connected, rate_limited_send, scan_replies,
+    is_gmail_connected, rate_limited_send, scan_replies, send_email,
 )
+import scheduler
 
 app = FastAPI(title="Recruiting Bot API")
+
+@app.on_event("startup")
+def _start_scheduler():
+    scheduler.configure(service_factory=get_gmail_service, send_fn=send_email)
+    scheduler.start()
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
@@ -91,6 +97,8 @@ async def upload_csv(file: UploadFile = File(...), user=Depends(get_current_user
 class ContactUpdate(BaseModel):
     status: Optional[str] = None
     tier: Optional[str] = None
+    alumni: Optional[str] = None
+    level: Optional[str] = None
     notes: Optional[str] = None
     follow_up_due: Optional[str] = None
     meeting_at: Optional[str] = None
@@ -182,11 +190,8 @@ def generate_batch_custom_endpoint(req: CustomBatchRequest, user=Depends(get_cur
             context = "\n".join(context_parts)
 
             result = compose_free(personalized_prompt, context)
-            body = result["body"]
-            sig = settings.get("signature", "").strip()
-            if sig:
-                sep = '<p style="margin:16px 0 4px 0;color:#666">--</p>'
-                body = f"{body}{sep}{sig}"
+            from email_gen import append_signature
+            body = append_signature(result["body"], settings)
             update_contact(user.id, contact["id"], {"generated_email": body})
             results.append({"id": contact["id"], "success": True})
         except Exception as e:
@@ -213,26 +218,56 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
         raise HTTPException(status_code=429, detail=f"Daily cap of {daily_cap} reached")
 
     all_contacts = {c["id"]: c for c in get_all_contacts(user.id)}
+    now = datetime.utcnow()
+    results = []
+
+    print(f"[send] attachments in settings: {settings.get('attachments')}")
+    # --- Scheduled send: enqueue and return immediately ---
+    if req.schedule_date and req.schedule_time:
+        for cid in req.contact_ids:
+            c = all_contacts.get(cid)
+            if not c or not c.get("generated_email") or c.get("tier") == "md_partner":
+                continue
+            tz_id = location_to_timezone(c.get("location", ""))
+            send_at = local_to_utc(req.schedule_date, req.schedule_time, tz_id)
+            if send_at <= now:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Scheduled time {req.schedule_time} on {req.schedule_date} is already in the past ({tz_id}). Pick a future time or date."
+                )
+            scheduler.enqueue({
+                "id": cid,
+                "user_id": user.id,
+                "to": c["email"],
+                "subject": c.get("generated_subject", ""),
+                "body": c["generated_email"],
+                "firm": c.get("firm", ""),
+                "attachment_paths": [p for p in settings.get("attachments", []) if p],
+            }, send_at)
+            update_contact(user.id, cid, {
+                "status": "Contacted",
+                "sent_at": send_at.isoformat(),
+                "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
+            })
+            increment_sent(user.id)
+            results.append({"id": cid, "success": True, "scheduled": True, "send_at": send_at.isoformat()})
+        return results
+
+    # --- Immediate send ---
     emails_to_send = []
     for cid in req.contact_ids:
         c = all_contacts.get(cid)
         if not c or not c.get("generated_email") or c.get("tier") == "md_partner":
             continue
-
-        # Per-contact local-time scheduling
         scheduled_time = None
-        if req.schedule_date and req.schedule_time:
-            tz_id = location_to_timezone(c.get("location", ""))
-            scheduled_time = local_to_utc(req.schedule_date, req.schedule_time, tz_id)
-        elif req.scheduled_time:
+        if req.scheduled_time:
             scheduled_time = datetime.fromisoformat(req.scheduled_time)
-
         emails_to_send.append({
             "id": cid,
             "to": c["email"],
-            "subject": c["generated_subject"],
+            "subject": c.get("generated_subject", ""),
             "body": c["generated_email"],
-            "firm": c["firm"],
+            "firm": c.get("firm", ""),
             "attachment_paths": [p for p in settings.get("attachments", []) if p],
             "scheduled_time": scheduled_time,
             "location": c.get("location", ""),
@@ -257,6 +292,29 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             increment_sent(user.id)
 
     return results
+
+
+# --- Test send ---
+
+class TestSendRequest(BaseModel):
+    subject: str
+    body: str
+    to: Optional[str] = None   # defaults to the logged-in user's email
+
+@app.post("/send-test")
+def send_test_email(req: TestSendRequest, user=Depends(get_current_user)):
+    settings = get_settings(user.id)
+    recipient = req.to or user.email
+    service = get_gmail_service(user.id)
+    send_email(
+        service=service,
+        to=recipient,
+        subject=f"[TEST] {req.subject}",
+        body=req.body,
+        firm="",
+        attachment_paths=[p for p in settings.get("attachments", []) if p],
+    )
+    return {"sent_to": recipient}
 
 
 # --- Reply Scanning ---
@@ -290,6 +348,32 @@ def gmail_status(user=Depends(get_current_user)):
     return {"connected": is_gmail_connected(user.id)}
 
 
+# --- File browser ---
+
+@app.get("/browse-file")
+def browse_file(user=Depends(get_current_user)):
+    import tkinter as tk
+    from tkinter import filedialog
+    root = tk.Tk()
+    root.withdraw()
+    root.wm_attributes('-topmost', True)
+    path = filedialog.askopenfilename(
+        title="Select attachment",
+        filetypes=[("PDF files", "*.pdf"), ("Word documents", "*.docx"), ("All files", "*.*")],
+    )
+    root.destroy()
+    if not path:
+        return {"path": None}
+    return {"path": path.replace("/", "\\")}
+
+
+# --- Scheduled queue status ---
+
+@app.get("/scheduled")
+def get_scheduled(user=Depends(get_current_user)):
+    return {"queued": scheduler.get_scheduled(), "count": scheduler.queue_size()}
+
+
 # --- Stats & Settings ---
 
 @app.get("/stats")
@@ -303,6 +387,7 @@ class SettingsUpdate(BaseModel):
     sender_name: Optional[str] = None
     sender_school: Optional[str] = None
     availability: Optional[str] = None
+    linkedin_url: Optional[str] = None
     signature: Optional[str] = None
     attachments: Optional[list[str]] = None
 

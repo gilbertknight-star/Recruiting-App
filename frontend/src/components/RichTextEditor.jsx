@@ -102,6 +102,8 @@ export default function RichTextEditor({ value, onChange, style = {}, placeholde
         }
         [contenteditable]:focus { border-color: var(--accent); }
         [contenteditable] a { color: var(--accent); text-decoration: underline; }
+        [contenteditable] p { margin: 0; }
+        [contenteditable] div, [contenteditable] p, [contenteditable] span { color: inherit !important; }
       `}</style>
     </div>
   )

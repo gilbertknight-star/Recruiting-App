@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { getStats, scanReplies, getContacts } from '../api/client'
+import { getStats, scanReplies, getContacts, getScheduled } from '../api/client'
 
 const STATUS_COLOR = {
   'Cold':              '#64748b',
@@ -21,13 +21,19 @@ function StatCard({ label, value, sub, color }) {
 }
 
 export default function Dashboard() {
-  const [stats,    setStats]    = useState(null)
-  const [contacts, setContacts] = useState([])
-  const [scanning, setScanning] = useState(false)
+  const [stats,     setStats]     = useState(null)
+  const [contacts,  setContacts]  = useState([])
+  const [scanning,  setScanning]  = useState(false)
+  const [scheduled, setScheduled] = useState([])
 
   useEffect(() => {
     getStats().then(setStats).catch(() => setStats({}))
     getContacts().then(setContacts).catch(() => setContacts([]))
+    getScheduled().then(r => setScheduled(r.queued || [])).catch(() => {})
+    const interval = setInterval(() => {
+      getScheduled().then(r => setScheduled(r.queued || [])).catch(() => {})
+    }, 30_000)
+    return () => clearInterval(interval)
   }, [])
 
   const responseRate = stats && stats.total_sent > 0
@@ -142,6 +148,32 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── Scheduled queue ─────────────────────────────────────── */}
+      {scheduled.length > 0 && (
+        <div className="card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>Scheduled to Send</span>
+            <span style={{ fontSize: 11, color: '#c084fc', fontWeight: 600 }}>{scheduled.length} queued</span>
+          </div>
+          <table>
+            <thead>
+              <tr><th>Recipient</th><th>Subject</th><th>Sends At (your time)</th></tr>
+            </thead>
+            <tbody>
+              {scheduled.map((e, i) => (
+                <tr key={i}>
+                  <td style={{ fontWeight: 500 }}>{e.to}</td>
+                  <td style={{ color: 'var(--muted)' }}>{e.subject}</td>
+                  <td style={{ color: '#c084fc', fontSize: 12 }}>
+                    {new Date(e.send_at + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {/* ── Follow-ups + Recent activity ─────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
@@ -176,7 +208,7 @@ export default function Dashboard() {
                       }}>{c.status}</span>
                     </td>
                     <td style={{ color: 'var(--red)', fontSize: 12 }}>
-                      {new Date(c.follow_up_due).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {new Date(c.follow_up_due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </td>
                   </tr>
                 ))}
@@ -209,7 +241,7 @@ export default function Dashboard() {
                       }}>{c.status}</span>
                     </td>
                     <td style={{ color: 'var(--muted)', fontSize: 12 }}>
-                      {new Date(c.last_contacted).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {new Date(c.last_contacted + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </td>
                   </tr>
                 ))}

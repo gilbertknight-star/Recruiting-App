@@ -7,6 +7,8 @@ const TIERS = [
   { key: 'vp',               label: 'VP / Director',        short: 'VP' },
   { key: 'md_partner',       label: 'MD / Partner',         short: 'MD' },
   { key: 'n_a',              label: 'N/A',                  short: 'N/A' },
+  { key: 'uoig_alum',        label: 'UOIG Alum',           short: 'UOIG', divider: true, color: '#a78bfa' },
+  { key: 'uo_alum',          label: 'UO Alum',             short: 'UO',                  color: '#fb923c' },
 ]
 
 const VARIABLES = [
@@ -146,18 +148,21 @@ function Templates() {
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Template Tier</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
             {TIERS.map(t => (
-              <button key={t.key} onClick={() => setActiveTier(t.key)} style={{
-                textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none',
-                cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                background: activeTier === t.key ? 'var(--accent)' : 'transparent',
-                color: activeTier === t.key ? '#fff' : 'var(--muted)',
-                transition: 'all 0.12s',
-              }}
-              onMouseEnter={e => { if (activeTier !== t.key) { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text)' } }}
-              onMouseLeave={e => { if (activeTier !== t.key) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--muted)' } }}
-              >
-                {t.label}
-              </button>
+              <div key={t.key}>
+                {t.divider && <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0 5px', opacity: 0.5 }} />}
+                <button onClick={() => setActiveTier(t.key)} style={{
+                  width: '100%', textAlign: 'left', padding: '8px 12px', borderRadius: 6, border: 'none',
+                  cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                  background: activeTier === t.key ? (t.color || 'var(--accent)') : 'transparent',
+                  color: activeTier === t.key ? '#fff' : (t.color || 'var(--muted)'),
+                  transition: 'all 0.12s',
+                }}
+                onMouseEnter={e => { if (activeTier !== t.key) { e.currentTarget.style.background = 'var(--border)'; e.currentTarget.style.color = 'var(--text)' } }}
+                onMouseLeave={e => { if (activeTier !== t.key) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = t.color || 'var(--muted)' } }}
+                >
+                  {t.label}
+                </button>
+              </div>
             ))}
           </div>
         </div>
@@ -169,7 +174,7 @@ function Templates() {
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>Click any value to change</div>
           </div>
 
-          {TIERS.map((t, i) => (
+          {TIERS.filter(t => !t.color).map((t, i) => (
             <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: 0, borderRadius: 8, overflow: 'hidden', border: `1px solid ${activeTier === t.key ? 'var(--accent)' : 'var(--border)'}`, transition: 'border-color 0.15s' }}>
               {/* Tier label row */}
               <div style={{

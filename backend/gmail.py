@@ -15,6 +15,8 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from db import supabase, DEV_MODE
 
+DEV_USER_ID = "dev-user"
+
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.modify",
@@ -106,18 +108,18 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
 
     for path in (attachment_paths or []):
         p = Path(path)
-        if p.exists():
-            with open(p, "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-            encoders.encode_base64(part)
-            part.add_header("Content-Disposition", f'attachment; filename="{p.name}"')
-            msg.attach(part)
+        print(f"[attach] path={path!r} exists={p.exists()} resolved={p.resolve()}")
+        if not p.exists():
+            raise FileNotFoundError(f"Attachment not found: {path}")
+        with open(p, "rb") as f:
+            part = MIMEBase("application", "octet-stream")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{p.name}"')
+        msg.attach(part)
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     send_body = {"raw": raw, "labelIds": [recruiting_label_id, firm_label_id]}
-    if scheduled_time:
-        send_body["scheduledSendTime"] = scheduled_time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     result = service.users().messages().send(userId="me", body=send_body).execute()
     return {"message_id": result["id"], "thread_id": result.get("threadId")}
@@ -140,17 +142,25 @@ def scan_replies(service, contacts: list[dict]) -> list[dict]:
 DEV_REDIRECT_EMAIL = os.getenv("ADMIN_EMAIL", "gilbert.knight@gmail.com")
 
 def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0) -> list[dict]:
+    import scheduler
+
     if DEV_MODE:
         results = []
         for email in emails:
+            scheduled_time = email.get("scheduled_time")
+            if scheduled_time and scheduled_time > datetime.utcnow():
+                scheduler.enqueue({**email, "user_id": DEV_USER_ID}, scheduled_time)
+                results.append({"id": email["id"], "success": True, "scheduled": True, "send_at": scheduled_time.isoformat()})
+                continue
             try:
+                dev_banner = f'<p style="color:#888;font-size:11px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:16px">[DEV MODE → {email.get("to", "?")}]</p>'
                 result = send_email(
                     service=service,
                     to=DEV_REDIRECT_EMAIL,
                     subject=f"[DEV → {email.get('to', '?')}] {email['subject']}",
-                    body=f"--- DEV MODE: would send to {email.get('to', '?')} ---\n\n{email['body']}",
+                    body=f"{dev_banner}{email['body']}",
                     firm=email.get("firm", ""),
-                    scheduled_time=email.get("scheduled_time"),
+                    attachment_paths=email.get("attachment_paths", []),
                 )
                 results.append({"id": email["id"], "success": True, **result, "dev": True})
             except Exception as e:
@@ -164,6 +174,12 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
         if today_sent + sent_this_batch >= daily_cap:
             results.append({"id": email["id"], "success": False, "error": "Daily cap reached"})
             continue
+        scheduled_time = email.get("scheduled_time")
+        if scheduled_time and scheduled_time > datetime.utcnow():
+            scheduler.enqueue({**email}, scheduled_time)
+            results.append({"id": email["id"], "success": True, "scheduled": True, "send_at": scheduled_time.isoformat()})
+            sent_this_batch += 1
+            continue
         try:
             result = send_email(
                 service=service,
@@ -172,7 +188,6 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
                 body=email["body"],
                 firm=email.get("firm", ""),
                 attachment_paths=email.get("attachment_paths", []),
-                scheduled_time=email.get("scheduled_time"),
             )
             results.append({"id": email["id"], "success": True, **result})
             sent_this_batch += 1

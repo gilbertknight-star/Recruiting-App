@@ -38,7 +38,8 @@ function buildEventMap(contacts) {
   }
   for (const c of contacts) {
     if (c.sent_at) {
-      const d = new Date(c.sent_at)
+      const raw = c.sent_at.endsWith('Z') ? c.sent_at : c.sent_at + 'Z'
+      const d = new Date(raw)
       add(localDateKey(d), { ...E.sent, contact: c, time: d })
     }
     if (c.follow_up_due) {
@@ -77,7 +78,11 @@ export default function Calendar() {
   const [filterStatus, setFilterStatus] = useState('')
 
   useEffect(() => {
-    getContacts().then(setContacts).catch(() => setContacts([]))
+    const load = () => getContacts().then(setContacts).catch(() => {})
+    load()
+    const interval = setInterval(load, 30_000)
+    window.addEventListener('focus', load)
+    return () => { clearInterval(interval); window.removeEventListener('focus', load) }
   }, [])
 
   const filteredContacts = useMemo(() => contacts.filter(c => {
@@ -424,7 +429,7 @@ function EventCard({ event, compact }) {
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 1 }}>{event.contact.title} · {event.contact.firm}</div>
         {event.time && !compact && (
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            {new Date(event.time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            {event.time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
           </div>
         )}
       </div>
