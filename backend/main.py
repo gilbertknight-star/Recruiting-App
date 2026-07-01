@@ -21,7 +21,7 @@ from gmail import (
 )
 import scheduler
 
-app = FastAPI(title="Recruiting Bot API")
+app = FastAPI(title="Ducks In a Row API")
 
 @app.on_event("startup")
 def _start_scheduler():

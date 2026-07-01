@@ -33,7 +33,7 @@ function Layout() {
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <nav style={sidebar}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 32, letterSpacing: '-0.3px' }}>
-          Recruiting Bot
+          Ducks In a Row
         </div>
         {[
           { to: '/', label: 'Dashboard' },

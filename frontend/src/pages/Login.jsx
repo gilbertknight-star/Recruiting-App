@@ -46,7 +46,7 @@ export default function Login() {
         Enter Dev Mode
       </button>
       <div style={card}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Recruiting Bot</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Ducks In a Row</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 28 }}>
           {mode === 'signin' ? 'Sign in to your account' : 'Create an account'}
         </p>
