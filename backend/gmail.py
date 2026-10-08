@@ -139,6 +139,146 @@ def scan_replies(service, contacts: list[dict]) -> list[dict]:
     return updated
 
 
+def _decode_body(msg_part: dict) -> str:
+    data = msg_part.get("body", {}).get("data", "")
+    if data:
+        return base64.urlsafe_b64decode(data).decode("utf-8", errors="ignore")
+    for part in msg_part.get("parts", []):
+        text = _decode_body(part)
+        if text:
+            return text
+    return ""
+
+
+def _header(msg: dict, name: str) -> str:
+    for h in msg.get("payload", {}).get("headers", []):
+        if h["name"].lower() == name.lower():
+            return h["value"]
+    return ""
+
+
+def import_recruiting_folder(service, my_email: str) -> list[dict]:
+    """
+    Scans the Recruiting Gmail label and returns a list of contact dicts with
+    extracted name, email, and a conversation summary as notes.
+    """
+    import anthropic as _anthropic
+    import re
+
+    ai = _anthropic.Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
+
+    # Find the Recruiting label ID
+    labels_resp = service.users().labels().list(userId="me").execute()
+    recruiting_id = next(
+        (l["id"] for l in labels_resp.get("labels", []) if l["name"].lower() == "recruiting"),
+        None,
+    )
+    if not recruiting_id:
+        return []
+
+    # Get all threads in the label (up to 200)
+    threads_resp = service.users().threads().list(
+        userId="me", labelIds=[recruiting_id], maxResults=200
+    ).execute()
+    thread_items = threads_resp.get("threads", [])
+
+    results = []
+    for item in thread_items:
+        try:
+            thread = service.users().threads().get(
+                userId="me", id=item["id"], format="full"
+            ).execute()
+            messages = thread.get("messages", [])
+            if not messages:
+                continue
+
+            # Find the outbound message to determine who we emailed
+            contact_email = None
+            contact_name = None
+            for msg in messages:
+                from_addr = _header(msg, "from")
+                if my_email.lower() in from_addr.lower():
+                    to_addr = _header(msg, "to")
+                    # Parse "Name <email>" or just "email"
+                    m = re.match(r'"?([^"<]+)"?\s*<([^>]+)>', to_addr)
+                    if m:
+                        contact_name = m.group(1).strip()
+                        contact_email = m.group(2).strip()
+                    else:
+                        contact_email = to_addr.strip()
+                    break
+
+            if not contact_email:
+                # Fallback: whoever is NOT us in the thread
+                for msg in messages:
+                    from_addr = _header(msg, "from")
+                    if my_email.lower() not in from_addr.lower():
+                        m = re.match(r'"?([^"<]+)"?\s*<([^>]+)>', from_addr)
+                        if m:
+                            contact_name = m.group(1).strip()
+                            contact_email = m.group(2).strip()
+                        else:
+                            contact_email = from_addr.strip()
+                        break
+
+            if not contact_email:
+                continue
+
+            # Build a transcript of the thread (cap at ~3000 chars to save tokens)
+            transcript_parts = []
+            for msg in messages[:6]:
+                sender = _header(msg, "from")
+                body = _decode_body(msg.get("payload", {}))[:800]
+                transcript_parts.append(f"FROM: {sender}\n{body.strip()}")
+            transcript = "\n\n---\n\n".join(transcript_parts)[:3000]
+
+            # Ask Claude to extract firm, title, and a short note
+            prompt = f"""You are parsing an email thread from a college student's IB recruiting outreach.
+
+Email thread:
+{transcript}
+
+Extract the following as JSON (use null if unknown):
+{{
+  "firm": "company name",
+  "title": "their job title",
+  "notes": "2-3 sentence summary of the conversation status and any useful context"
+}}
+
+Respond with only the JSON object."""
+
+            resp = ai.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            raw = resp.content[0].text.strip()
+            # Strip markdown code fences if present
+            raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()
+            extracted = json.loads(raw)
+
+            # Determine status from thread length
+            has_reply = any(
+                my_email.lower() not in _header(msg, "from").lower()
+                for msg in messages
+            )
+            status = "Replied" if has_reply else "Contacted"
+
+            results.append({
+                "name": contact_name or contact_email.split("@")[0].replace(".", " ").title(),
+                "email": contact_email,
+                "firm": extracted.get("firm") or "",
+                "title": extracted.get("title") or "",
+                "notes": extracted.get("notes") or "",
+                "status": status,
+                "gmail_thread_id": item["id"],
+            })
+        except Exception:
+            continue
+
+    return results
+
+
 DEV_REDIRECT_EMAIL = os.getenv("ADMIN_EMAIL", "gilbert.knight@gmail.com")
 
 def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_cap: int = 50, today_sent: int = 0) -> list[dict]:

@@ -44,6 +44,7 @@ export const updateTemplate = (tier, updates) => api.patch(`/templates/${tier}`,
 
 export const getGmailAuthUrl = () => api.get('/gmail/auth-url').then(r => r.data)
 export const getGmailStatus = () => api.get('/gmail/status').then(r => r.data)
+export const importRecruitingFolder = () => api.post('/gmail/import-recruiting').then(r => r.data)
 
 export const inviteUser = (email) => api.post(`/invite?email=${encodeURIComponent(email)}`).then(r => r.data)
 

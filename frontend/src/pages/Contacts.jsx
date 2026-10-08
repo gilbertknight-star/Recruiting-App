@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings } from '../api/client'
+import { getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings, importRecruitingFolder } from '../api/client'
 import TierBadge from '../components/TierBadge'
 import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
@@ -80,6 +80,20 @@ export default function Contacts() {
       setContacts(prev => [...prev, created])
       setMsg(`Added ${created.name}`)
       setTimeout(() => setMsg(''), 3000)
+    }
+  }
+
+  async function handleGmailImport() {
+    setLoading(true)
+    setMsg('Scanning Recruiting folder… this may take a minute.')
+    try {
+      const result = await importRecruitingFolder()
+      setMsg(`Gmail import done — ${result.imported} new contacts, ${result.updated} updated, ${result.skipped} already up to date (${result.total_scanned} threads scanned).`)
+      loadContacts()
+    } catch (e) {
+      setMsg('Import failed — make sure Gmail is connected in Settings.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -296,6 +310,9 @@ export default function Contacts() {
             {loading ? 'Importing…' : 'Bulk Import CSV'}
             <input type="file" accept=".csv" style={{ display: 'none' }} onChange={handleUpload} />
           </label>
+          <button className="btn-secondary" onClick={handleGmailImport} disabled={loading} style={{ fontSize: 13 }}>
+            {loading ? 'Scanning…' : '↓ Import from Gmail'}
+          </button>
           <button className="btn-primary" onClick={() => setAddModal(true)}>+ Add Contact</button>
         </div>
       </div>

@@ -18,6 +18,7 @@ from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
     is_gmail_connected, rate_limited_send, scan_replies, send_email,
+    import_recruiting_folder,
 )
 import scheduler
 
@@ -346,6 +347,48 @@ def gmail_callback(code: str = Query(...), state: str = Query(...)):
 @app.get("/gmail/status")
 def gmail_status(user=Depends(get_current_user)):
     return {"connected": is_gmail_connected(user.id)}
+
+
+@app.post("/gmail/import-recruiting")
+def import_from_recruiting(user=Depends(get_current_user)):
+    service = get_gmail_service(user.id)
+    extracted = import_recruiting_folder(service, user.email)
+    existing = {c["email"].lower(): c for c in get_all_contacts(user.id)}
+
+    imported, updated, skipped = 0, 0, 0
+    for contact in extracted:
+        email_key = contact["email"].lower()
+        if email_key in existing:
+            c = existing[email_key]
+            patch = {}
+            if not c.get("firm") and contact.get("firm"):
+                patch["firm"] = contact["firm"]
+            if not c.get("title") and contact.get("title"):
+                patch["title"] = contact["title"]
+            if contact.get("notes"):
+                existing_notes = c.get("notes", "")
+                patch["notes"] = (existing_notes + "\n\n" + contact["notes"]).strip() if existing_notes else contact["notes"]
+            if not c.get("gmail_thread_id") and contact.get("gmail_thread_id"):
+                patch["gmail_thread_id"] = contact["gmail_thread_id"]
+                patch["status"] = contact["status"]
+            if patch:
+                update_contact(user.id, c["id"], patch)
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            create_contact(user.id, {
+                "name": contact["name"],
+                "email": contact["email"],
+                "firm": contact.get("firm", ""),
+                "title": contact.get("title", ""),
+                "notes": contact.get("notes", ""),
+                "status": contact["status"],
+                "gmail_thread_id": contact.get("gmail_thread_id"),
+            })
+            imported += 1
+
+    return {"imported": imported, "updated": updated, "skipped": skipped, "total_scanned": len(extracted)}
 
 
 # --- File browser ---
