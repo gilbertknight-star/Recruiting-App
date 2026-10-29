@@ -35,9 +35,11 @@ export default function Deals() {
   const [params] = useSearchParams()
 
   useEffect(() => {
-    getDeals().then(ds => { setDeals(ds); if (params.get('deal')) setBriefId(params.get('deal')) }).catch(() => {})
+    getDeals().then(setDeals).catch(() => {})
     getDealClientTitles().then(setClientTitles).catch(() => {})
   }, [])
+  // This page stays open between tabs, so open a deal's brief whenever a dashboard link points here
+  useEffect(() => { if (params.get('deal')) setBriefId(params.get('deal')) }, [params])
 
   async function runSearch() {
     setConfirming(false)

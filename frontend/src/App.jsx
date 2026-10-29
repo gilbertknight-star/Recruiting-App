@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
+import { PageActive } from './pageShown'
 import { AuthProvider, useAuth, isDevMode } from './context/AuthContext'
 
 function exitDevMode() {
@@ -17,6 +18,29 @@ import Settings from './pages/Settings'
 import Admin from './pages/Admin'
 import Login from './pages/Login'
 
+// Every page, by side. Pages you've opened stay mounted (just hidden) so searches, filters and scroll
+// survive moving between tabs; switching Bankers/Clients drops them all so the other side starts fresh.
+const PAGES = {
+  banker: {
+    '/': () => <Dashboard />,
+    '/contacts': () => <Contacts />,
+    '/find': () => <FindPeople />,
+    '/calendar': () => <Calendar />,
+    '/studio': () => <EmailStudio />,
+    '/settings': () => <Settings />,
+    '/admin': () => <Admin />,
+  },
+  client: {
+    '/client': () => <ClientDashboard />,
+    '/client/deals': () => <Deals />,
+    '/client/contacts': () => <Contacts side="client" />,
+    '/client/calendar': () => <Calendar />,
+    '/client/studio': () => <EmailStudio side="client" />,
+  },
+}
+// Dashboards are summaries, so they reload every time you open them instead of keeping old numbers
+const ALWAYS_FRESH = new Set(['/', '/client'])
+
 function Layout() {
   const { user, signOut } = useAuth()
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
@@ -29,6 +53,27 @@ function Layout() {
   function switchSide(next) {
     if (next !== side) navigate(next === 'client' ? '/client' : '/')
   }
+
+  const path = location.pathname.replace(/\/+$/, '') || '/'
+  const pages = PAGES[side]
+  const [opened, setOpened] = useState({ side, paths: [] })
+  const visits = useRef({})
+  const scrolls = useRef({})
+  const mainRef = useRef(null)
+  const lastPath = useRef(path)
+  const openedPaths = opened.side === side ? opened.paths : []
+  if (pages[path] && !openedPaths.includes(path)) {
+    setOpened({ side, paths: [...openedPaths, path] })
+  }
+  if (lastPath.current !== path) {
+    if (mainRef.current) scrolls.current[lastPath.current] = mainRef.current.scrollTop
+    if (ALWAYS_FRESH.has(path)) visits.current[path] = (visits.current[path] || 0) + 1
+    lastPath.current = path
+  }
+  useEffect(() => { scrolls.current = {} }, [side])
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = ALWAYS_FRESH.has(path) ? 0 : (scrolls.current[path] || 0)
+  }, [path])
 
   useEffect(() => {
     import('./api/client.js').then(({ getMe, getSettings }) => {
@@ -125,21 +170,12 @@ function Layout() {
           }
         </div>
       </nav>
-      <main style={{ flex: 1, padding: '32px 28px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/find" element={<FindPeople />} />
-          <Route path="/client" element={<ClientDashboard />} />
-          <Route path="/client/deals" element={<Deals />} />
-          <Route path="/client/contacts" element={<Contacts side="client" />} />
-          <Route path="/calendar" element={<Calendar />} />
-          <Route path="/studio" element={<EmailStudio />} />
-          <Route path="/client/calendar" element={<Calendar />} />
-          <Route path="/client/studio" element={<EmailStudio key="client" side="client" />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/admin" element={<Admin />} />
-        </Routes>
+      <main ref={mainRef} style={{ flex: 1, padding: '32px 28px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+        {openedPaths.map(p => (
+          <div key={`${side}${p}#${visits.current[p] || 0}`} style={{ display: p === path ? 'block' : 'none' }}>
+            <PageActive.Provider value={p === path}>{pages[p]()}</PageActive.Provider>
+          </div>
+        ))}
       </main>
       </div>
     </div>
