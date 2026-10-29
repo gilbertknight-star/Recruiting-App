@@ -56,6 +56,18 @@ export default function Settings() {
                 {gmailConnected ? 'Reconnect Gmail' : 'Connect Gmail'}
               </button>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={lbl}>BCC every email to</label>
+              <input
+                type="email"
+                value={settings.bcc_email || ''}
+                onChange={e => set('bcc_email', e.target.value)}
+                placeholder="you@uoregon.edu"
+              />
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                Sends you a hidden copy of every outreach email. Recipients can't see it. Leave blank to turn off.
+              </p>
+            </div>
           </div>
 
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

@@ -87,7 +87,7 @@ def get_or_create_label(service, label_name: str) -> str:
     return created["id"]
 
 
-def send_email(service, to: str, subject: str, body: str, firm: str, attachment_paths: list = None, scheduled_time: datetime = None) -> dict:
+def send_email(service, to: str, subject: str, body: str, firm: str, attachment_paths: list = None, scheduled_time: datetime = None, bcc: str = None) -> dict:
     recruiting_label_id = get_or_create_label(service, "Recruiting")
     firm_label_id = get_or_create_label(service, f"Recruiting/{firm}" if firm else "Recruiting/Other")
 
@@ -101,6 +101,8 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
 
     msg = MIMEMultipart('mixed')
     msg["To"] = to
+    if bcc:
+        msg["Bcc"] = bcc  # Gmail delivers to Bcc and strips the header, so the recipient never sees it
     msg["Subject"] = subject
     alt = MIMEMultipart('alternative')
     alt.attach(MIMEText(html_body, "html"))
@@ -328,6 +330,7 @@ def rate_limited_send(service, emails: list[dict], per_minute: int = 10, daily_c
                 body=email["body"],
                 firm=email.get("firm", ""),
                 attachment_paths=email.get("attachment_paths", []),
+                bcc=email.get("bcc"),
             )
             results.append({"id": email["id"], "success": True, **result})
             sent_this_batch += 1

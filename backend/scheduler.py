@@ -61,6 +61,7 @@ def _tick():
                 body=email["body"],
                 firm=email.get("firm", ""),
                 attachment_paths=email.get("attachment_paths", []),
+                bcc=None if dev_mode else email.get("bcc"),
             )
             print(f"[scheduler] Sent scheduled email to {email.get('to')}")
         except Exception as e:

@@ -245,6 +245,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
                 "body": c["generated_email"],
                 "firm": c.get("firm", ""),
                 "attachment_paths": [p for p in settings.get("attachments", []) if p],
+                "bcc": (settings.get("bcc_email") or "").strip() or None,
             }, send_at)
             update_contact(user.id, cid, {
                 "status": "Contacted",
@@ -271,6 +272,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "body": c["generated_email"],
             "firm": c.get("firm", ""),
             "attachment_paths": [p for p in settings.get("attachments", []) if p],
+            "bcc": (settings.get("bcc_email") or "").strip() or None,
             "scheduled_time": scheduled_time,
             "location": c.get("location", ""),
         })
@@ -534,6 +536,7 @@ class SettingsUpdate(BaseModel):
     linkedin_url: Optional[str] = None
     signature: Optional[str] = None
     attachments: Optional[list[str]] = None
+    bcc_email: Optional[str] = None
 
 
 @app.get("/settings")

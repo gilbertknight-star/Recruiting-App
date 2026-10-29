@@ -106,6 +106,7 @@ _settings: dict = {
     "sender_name": "Gilbert Knight",
     "sender_school": "University of Oregon",
     "attachments": [],
+    "bcc_email": "",
     "availability": "Monday through Friday, 9am to 5pm PST",
     "linkedin_url": "https://www.linkedin.com/in/gilbert-knight",
     "signature": "<div style=\"font-family:inherit;font-size:inherit;line-height:1.5\"><strong>Gilbert Knight</strong><br>Senior Analyst | University of Oregon Investment Group<br>Research Analyst | University of Oregon Quant Group<br>University of Oregon '29<br>(503) 858-4401 &middot; <a href=\"mailto:gilbert.knight@gmail.com\">gilbert.knight@gmail.com</a> &middot; <a href=\"https://www.linkedin.com/in/gilbert-knight\" target=\"_blank\">LinkedIn</a></div>",
