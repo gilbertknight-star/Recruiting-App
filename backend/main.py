@@ -33,9 +33,31 @@ def _prepare_scheduled(email: dict) -> dict:
     tz_id = location_to_timezone(email.get("location", ""))
     return {**email, "body": gcal.fill_availability(email["body"], user_id, get_settings(user_id), tz_id)}
 
+
+def _scheduled_sent(email: dict, result: dict):
+    """Store the Gmail thread so reply scanning can find replies to scheduled emails."""
+    if email.get("test") or not email.get("id"):
+        return
+    update_contact(email["user_id"], email["id"], {"gmail_thread_id": (result or {}).get("thread_id")})
+
+
+def _scheduled_failed(email: dict, error: Exception):
+    """The contact was marked Contacted when scheduled; undo that so it doesn't look sent."""
+    if email.get("test") or not email.get("id"):
+        return
+    contact = next((c for c in get_all_contacts(email["user_id"]) if c["id"] == email["id"]), None)
+    if contact and contact.get("status") == "Contacted" and not contact.get("gmail_thread_id"):
+        update_contact(email["user_id"], email["id"], {
+            "status": "Cold", "sent_at": None, "follow_up_due": None,
+            "notes": ((contact.get("notes") or "") + f"\n\nScheduled send failed: {error}").strip(),
+        })
+
 @app.on_event("startup")
 def _start_scheduler():
-    scheduler.configure(service_factory=get_gmail_service, send_fn=send_email, prepare_fn=_prepare_scheduled)
+    scheduler.configure(
+        service_factory=get_gmail_service, send_fn=send_email, prepare_fn=_prepare_scheduled,
+        on_sent_fn=_scheduled_sent, on_failed_fn=_scheduled_failed,
+    )
     scheduler.start()
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -239,6 +261,7 @@ def _redirect_for_test(email: dict, user_email: str) -> dict:
         "subject": f"[TEST → {email['to']}] {email['subject']}",
         "body": banner + email["body"],
         "bcc": None,
+        "test": True,
     }
 
 
@@ -304,6 +327,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             scheduled_time = datetime.fromisoformat(req.scheduled_time)
         email = {
             "id": cid,
+            "user_id": user.id,
             "to": c["email"],
             "subject": c.get("generated_subject", ""),
             "body": gcal.fill_availability(c["generated_email"], user.id, settings, location_to_timezone(c.get("location", ""))),
@@ -577,7 +601,8 @@ def availability_preview(location: str = "", user=Depends(get_current_user)):
 
 @app.get("/scheduled")
 def get_scheduled(user=Depends(get_current_user)):
-    return {"queued": scheduler.get_scheduled(), "count": scheduler.queue_size()}
+    queued = scheduler.get_scheduled(user.id)
+    return {"queued": queued, "count": len(queued)}
 
 
 # --- Stats & Settings ---
