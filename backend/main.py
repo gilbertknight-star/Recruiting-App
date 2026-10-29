@@ -210,13 +210,28 @@ class SendRequest(BaseModel):
     schedule_time: Optional[str] = None         # e.g. "09:00"  — per-contact local time
 
 
+def _redirect_for_test(email: dict, user_email: str) -> dict:
+    """Test mode: deliver to the user instead of the contact, marked with who it was meant for."""
+    banner = (f'<p style="color:#888;font-size:11px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:16px">'
+              f'[TEST MODE → would have gone to {email["to"]}]</p>')
+    return {
+        **email,
+        "to": user_email,
+        "subject": f"[TEST → {email['to']}] {email['subject']}",
+        "body": banner + email["body"],
+        "bcc": None,
+    }
+
+
 @app.post("/send")
 def send_emails(req: SendRequest, user=Depends(get_current_user)):
     settings = get_settings(user.id)
     stats = get_stats(user.id)
     daily_cap = settings.get("daily_cap", 50)
+    # Test mode sends everything to the user and leaves contacts and send counts untouched
+    test_mode = bool(settings.get("test_mode"))
 
-    if stats["today_sent"] >= daily_cap:
+    if not test_mode and stats["today_sent"] >= daily_cap:
         raise HTTPException(status_code=429, detail=f"Daily cap of {daily_cap} reached")
 
     all_contacts = {c["id"]: c for c in get_all_contacts(user.id)}
@@ -237,7 +252,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
                     status_code=400,
                     detail=f"Scheduled time {req.schedule_time} on {req.schedule_date} is already in the past ({tz_id}). Pick a future time or date."
                 )
-            scheduler.enqueue({
+            email = {
                 "id": cid,
                 "user_id": user.id,
                 "to": c["email"],
@@ -246,14 +261,16 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
                 "firm": c.get("firm", ""),
                 "attachment_paths": [p for p in settings.get("attachments", []) if p],
                 "bcc": (settings.get("bcc_email") or "").strip() or None,
-            }, send_at)
-            update_contact(user.id, cid, {
-                "status": "Contacted",
-                "sent_at": send_at.isoformat(),
-                "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
-            })
-            increment_sent(user.id)
-            results.append({"id": cid, "success": True, "scheduled": True, "send_at": send_at.isoformat()})
+            }
+            scheduler.enqueue(_redirect_for_test(email, user.email) if test_mode else email, send_at)
+            if not test_mode:
+                update_contact(user.id, cid, {
+                    "status": "Contacted",
+                    "sent_at": send_at.isoformat(),
+                    "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
+                })
+                increment_sent(user.id)
+            results.append({"id": cid, "success": True, "scheduled": True, "send_at": send_at.isoformat(), "test": test_mode})
         return results
 
     # --- Immediate send ---
@@ -265,7 +282,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
         scheduled_time = None
         if req.scheduled_time:
             scheduled_time = datetime.fromisoformat(req.scheduled_time)
-        emails_to_send.append({
+        email = {
             "id": cid,
             "to": c["email"],
             "subject": c.get("generated_subject", ""),
@@ -275,15 +292,19 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "bcc": (settings.get("bcc_email") or "").strip() or None,
             "scheduled_time": scheduled_time,
             "location": c.get("location", ""),
-        })
+        }
+        emails_to_send.append(_redirect_for_test(email, user.email) if test_mode else email)
 
     service = get_gmail_service(user.id)
     results = rate_limited_send(
         service, emails_to_send,
         per_minute=settings.get("emails_per_minute", 10),
         daily_cap=daily_cap,
-        today_sent=stats["today_sent"],
+        today_sent=0 if test_mode else stats["today_sent"],
     )
+
+    if test_mode:
+        return [{**r, "test": True} for r in results]
 
     for r in results:
         if r["success"]:
@@ -537,6 +558,7 @@ class SettingsUpdate(BaseModel):
     signature: Optional[str] = None
     attachments: Optional[list[str]] = None
     bcc_email: Optional[str] = None
+    test_mode: Optional[bool] = None
 
 
 @app.get("/settings")

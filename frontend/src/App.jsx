@@ -19,16 +19,32 @@ function Layout() {
   const { user, signOut } = useAuth()
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
   const devMode = isDevMode()
+  const [testMode, setTestMode] = useState(false)
 
   useEffect(() => {
-    import('./api/client.js').then(({ getMe }) => getMe().catch(() => {}))
+    import('./api/client.js').then(({ getMe, getSettings }) => {
+      getMe().catch(() => {})
+      getSettings().then(s => setTestMode(!!s?.test_mode)).catch(() => {})
+    })
   }, [user?.id])
+
+  async function toggleTestMode() {
+    const { updateSettings } = await import('./api/client.js')
+    const next = !testMode
+    await updateSettings({ test_mode: next })
+    setTestMode(next)
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {devMode && (
         <div style={{ background: '#dc2626', color: '#fff', textAlign: 'center', padding: '6px 0', fontSize: 13, fontWeight: 600, letterSpacing: '0.05em', flexShrink: 0 }}>
           DEV MODE — no data is saved, no emails are sent
+        </div>
+      )}
+      {testMode && !devMode && (
+        <div style={{ background: 'var(--yellow)', color: '#1a1d27', textAlign: 'center', padding: '6px 0', fontSize: 13, fontWeight: 600, letterSpacing: '0.05em', flexShrink: 0 }}>
+          TEST MODE — every email goes to {user?.email} instead of the contact. Contacts are not marked as sent.
         </div>
       )}
       <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
@@ -62,6 +78,20 @@ function Layout() {
           </NavLink>
         )}
         <div style={{ marginTop: 'auto' }}>
+          {!devMode && (
+            <button
+              className="btn-sm"
+              onClick={toggleTestMode}
+              style={{
+                width: '100%', marginBottom: 12,
+                background: testMode ? 'var(--yellow)' : 'var(--surface2)',
+                color: testMode ? '#1a1d27' : 'var(--text)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {testMode ? 'Test Mode: ON' : 'Test Mode: OFF'}
+            </button>
+          )}
           <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {user?.email}
           </div>
