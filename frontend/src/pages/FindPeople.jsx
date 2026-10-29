@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apolloSearch, apolloReveal } from '../api/client'
 import SavedInApollo from '../components/SavedInApollo'
+import LinkedInAdd from '../components/LinkedInAdd'
 import { SENIORITIES, splitList } from '../lib/apolloFilters'
 
 const PER_PAGE = 25
@@ -23,6 +24,7 @@ export default function FindPeople() {
   const tabs = [
     { id: 'search', label: 'Search Apollo' },
     { id: 'saved', label: 'Saved in Apollo' },
+    { id: 'linkedin', label: 'Add by LinkedIn' },
   ]
 
   return (
@@ -32,7 +34,9 @@ export default function FindPeople() {
         <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
           {tab === 'search'
             ? 'Searching Apollo is free. Getting contact info uses 1 Apollo credit per person and adds them to Contacts.'
-            : 'People you already saved in Apollo. Adding them to Contacts uses no credits.'}
+            : tab === 'saved'
+              ? 'People you already saved in Apollo. Adding them to Contacts uses no credits.'
+              : 'Paste a LinkedIn profile. Checks your Contacts and saved Apollo contacts for free; a fresh Apollo lookup costs 1 credit and always asks first.'}
         </p>
       </div>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
@@ -51,7 +55,7 @@ export default function FindPeople() {
           </button>
         ))}
       </div>
-      {tab === 'search' ? <SearchApollo /> : <SavedInApollo />}
+      {tab === 'search' ? <SearchApollo /> : tab === 'saved' ? <SavedInApollo /> : <LinkedInAdd />}
     </div>
   )
 }

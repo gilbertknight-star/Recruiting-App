@@ -9,6 +9,7 @@ export default function SavedInApollo() {
   const [lists, setLists] = useState([])
   const [listId, setListId] = useState('')
   const [keywords, setKeywords] = useState('')
+  const [firm, setFirm] = useState('')
   const [titles, setTitles] = useState('')
   const [seniorities, setSeniorities] = useState([])
   const [results, setResults] = useState(null)
@@ -35,6 +36,7 @@ export default function SavedInApollo() {
   function filters(overrides = {}) {
     return {
       keywords: keywords.trim(),
+      firm: firm.trim(),
       list_id: listId,
       titles: splitList(titles),
       seniorities,
@@ -89,7 +91,7 @@ export default function SavedInApollo() {
   return (
     <div>
       <form className="card" onSubmit={e => { e.preventDefault(); load(1) }} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
           <div>
             <label style={lbl}>List</label>
             <select value={listId} onChange={e => { setListId(e.target.value); load(1, { list_id: e.target.value }) }}>
@@ -102,8 +104,12 @@ export default function SavedInApollo() {
             <input value={titles} onChange={e => setTitles(e.target.value)} placeholder="Vice President, Associate" />
           </div>
           <div>
-            <label style={lbl}>Search name or firm</label>
-            <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Lazard" />
+            <label style={lbl}>Name</label>
+            <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Hannah Kelso" />
+          </div>
+          <div>
+            <label style={lbl}>Firm</label>
+            <input value={firm} onChange={e => setFirm(e.target.value)} placeholder="Lazard" />
           </div>
           <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Loading…' : 'Search'}</button>
         </div>

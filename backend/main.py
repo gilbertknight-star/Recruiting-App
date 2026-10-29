@@ -538,7 +538,8 @@ def _import_apollo_people(user_id: str, people: list[dict]) -> dict:
 
 
 class ApolloSavedSearchRequest(BaseModel):
-    keywords: str = ""
+    keywords: str = ""   # a person's name (Apollo also matches title/company words)
+    firm: str = ""
     list_id: str = ""
     titles: Optional[list[str]] = None
     seniorities: Optional[list[str]] = None
@@ -550,9 +551,42 @@ class ApolloSavedImportRequest(BaseModel):
     people: Optional[list[dict]] = None
     all: bool = False
     keywords: str = ""
+    firm: str = ""
     list_id: str = ""
     titles: Optional[list[str]] = None
     seniorities: Optional[list[str]] = None
+
+
+class LinkedInLookupRequest(BaseModel):
+    url: str
+    use_credit: bool = False   # only after the user confirms spending 1 Apollo credit
+
+
+@app.post("/apollo/linkedin")
+def apollo_linkedin(req: LinkedInLookupRequest, user=Depends(get_current_user)):
+    """Add someone from their LinkedIn URL: check Contacts, then saved Apollo contacts (both free),
+    then, only if asked and allowed, a paid Apollo lookup."""
+    target = apollo.normalize_linkedin(req.url)
+    if not target:
+        raise HTTPException(status_code=400, detail="That doesn't look like a LinkedIn profile link (linkedin.com/in/...)")
+    guess = {"name": apollo.name_from_linkedin(req.url), "linkedin_url": f"https://www.{target}/"}
+
+    existing = next((c for c in get_all_contacts(user.id) if apollo.normalize_linkedin(c.get("linkedin_url", "")) == target), None)
+    if existing:
+        return {"source": "contacts", "contact": existing}
+
+    try:
+        saved = apollo.find_saved_by_linkedin(req.url)
+        if saved:
+            return {"source": "saved", "person": saved, **_import_apollo_people(user.id, [saved])}
+        if not req.use_credit:
+            return {"source": "not_found", "guess": guess, "credits_enabled": apollo.APOLLO_ALLOW_CREDITS}
+        person = apollo.reveal_by_linkedin(req.url)
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not person:
+        return {"source": "not_found", "guess": guess, "credits_enabled": apollo.APOLLO_ALLOW_CREDITS, "credit_tried": True}
+    return {"source": "apollo", "person": person, **_import_apollo_people(user.id, [person])}
 
 
 @app.get("/apollo/lists")
@@ -566,7 +600,7 @@ def apollo_lists(user=Depends(get_current_user)):
 @app.post("/apollo/saved")
 def apollo_saved(req: ApolloSavedSearchRequest, user=Depends(get_current_user)):
     try:
-        return apollo.search_saved(req.keywords, req.list_id, req.page, req.per_page, req.titles, req.seniorities)
+        return apollo.search_saved(req.keywords, req.list_id, req.page, req.per_page, req.titles, req.seniorities, req.firm.strip())
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -574,7 +608,7 @@ def apollo_saved(req: ApolloSavedSearchRequest, user=Depends(get_current_user)):
 @app.post("/apollo/saved/import")
 def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_user)):
     try:
-        people = (apollo.all_saved(req.keywords, req.list_id, req.titles, req.seniorities)
+        people = (apollo.all_saved(req.keywords, req.list_id, req.titles, req.seniorities, req.firm.strip())
                   if req.all else (req.people or []))
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))

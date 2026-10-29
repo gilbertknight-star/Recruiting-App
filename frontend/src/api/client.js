@@ -50,7 +50,8 @@ export const inviteUser = (email) => api.post(`/invite?email=${encodeURIComponen
 
 export const apolloSearch = (params) => api.post('/apollo/search', params).then(r => r.data)
 export const apolloReveal = (apolloIds) => api.post('/apollo/reveal', { apollo_ids: apolloIds }).then(r => r.data)
-export const apolloLists = () => api.get('/apollo/lists').then(r => r.data)
+export const apolloLinkedIn = (url, useCredit = false) => api.post('/apollo/linkedin', { url, use_credit: useCredit }).then(r => r.data)
+export const apolloLists =() => api.get('/apollo/lists').then(r => r.data)
 export const apolloSaved = (params) => api.post('/apollo/saved', params).then(r => r.data)
 export const apolloImportSaved = (body) => api.post('/apollo/saved/import', body).then(r => r.data)
 
