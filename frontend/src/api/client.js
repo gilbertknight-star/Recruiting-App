@@ -55,7 +55,8 @@ export const apolloSaved = (params) => api.post('/apollo/saved', params).then(r 
 export const apolloImportSaved = (body) => api.post('/apollo/saved/import', body).then(r => r.data)
 
 export const getCalendarEvents = (start, end) => api.get('/calendar/events', { params: { start, end } }).then(r => r.data)
-export const getAvailabilityPreview = (location = '') => api.get('/calendar/availability-preview', { params: { location } }).then(r => r.data)
+export const getCalendarList = () => api.get('/calendar/list').then(r => r.data)
+export const getAvailabilityPreview =(location = '') => api.get('/calendar/availability-preview', { params: { location } }).then(r => r.data)
 
 export const getScheduled =() => api.get('/scheduled').then(r => r.data)
 export const browseFile = () => api.get('/browse-file').then(r => r.data)

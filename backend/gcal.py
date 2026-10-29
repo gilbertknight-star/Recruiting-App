@@ -67,40 +67,102 @@ def sync_meeting(user_id: str, contact: dict) -> str | None:
     return service.events().insert(calendarId="primary", body=body).execute()["id"]
 
 
-# --- Reading events (Google Calendar -> app) ---
+# --- Which calendars to read ---
 
-def list_events(user_id: str, start: datetime, end: datetime) -> list[dict]:
+def list_calendars(user_id: str) -> list[dict]:
+    """Every calendar in the user's Google Calendar list: their own, shared, and subscribed (e.g. an Outlook feed)."""
     service = get_calendar_service(user_id)
-    items = service.events().list(
-        calendarId="primary", timeMin=start.isoformat() + "Z", timeMax=end.isoformat() + "Z",
-        singleEvents=True, orderBy="startTime", maxResults=500,
-    ).execute().get("items", [])
+    items = service.calendarList().list().execute().get("items", [])
     return [
         {
-            "id": e["id"],
-            "title": e.get("summary", "(busy)"),
-            "start": e["start"].get("dateTime") or e["start"].get("date"),
-            "end": e["end"].get("dateTime") or e["end"].get("date"),
-            "all_day": "date" in e["start"],
+            "id": c["id"],
+            "name": c.get("summaryOverride") or c.get("summary", c["id"]),
+            "color": c.get("backgroundColor", "#94a3b8"),
+            "primary": bool(c.get("primary")),
+            "shown_in_google": bool(c.get("selected")),
         }
-        for e in items if e.get("status") != "cancelled"
+        for c in items if not c.get("deleted")
     ]
+
+
+def chosen_calendars(user_id: str, settings: dict) -> list[dict]:
+    """Calendars picked in Settings; until then, the ones checked in Google Calendar.
+    Falls back to the main calendar if the calendar list can't be read (an older Google login)."""
+    try:
+        calendars = list_calendars(user_id)
+    except Exception as e:
+        print(f"[calendar] calendar list unavailable, using primary only: {e}")
+        return [{"id": "primary", "name": "Google Calendar", "color": "#94a3b8", "primary": True}]
+    picked = settings.get("calendar_ids")
+    if picked:
+        return [c for c in calendars if c["id"] in picked]
+    return [c for c in calendars if c["shown_in_google"] or c["primary"]]
+
+
+# --- Reading events (Google Calendar -> app) ---
+
+def _raw_events(service, calendar_id: str, start: datetime, end: datetime) -> list[dict]:
+    return service.events().list(
+        calendarId=calendar_id, timeMin=start.isoformat() + "Z", timeMax=end.isoformat() + "Z",
+        singleEvents=True, orderBy="startTime", maxResults=500,
+    ).execute().get("items", [])
+
+
+def list_events(user_id: str, start: datetime, end: datetime, settings: dict = None) -> list[dict]:
+    service = get_calendar_service(user_id)
+    events = []
+    for cal in chosen_calendars(user_id, settings or {}):
+        try:
+            items = _raw_events(service, cal["id"], start, end)
+        except Exception as e:
+            print(f"[calendar] couldn't read {cal['name']}: {e}")
+            continue
+        events += [
+            {
+                "id": e["id"],
+                "title": e.get("summary", "(busy)"),
+                "start": e["start"].get("dateTime") or e["start"].get("date"),
+                "end": e["end"].get("dateTime") or e["end"].get("date"),
+                "all_day": "date" in e["start"],
+                "calendar": cal["name"],
+                "color": cal["color"],
+            }
+            for e in items if e.get("status") != "cancelled"
+        ]
+    return events
 
 
 # --- Live availability ---
 
-def _busy_intervals(user_id: str, start_utc: datetime, end_utc: datetime) -> list[tuple[datetime, datetime]]:
+def _parse(ts: str) -> datetime:
+    return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+
+
+def _busy_intervals(user_id: str, start_utc: datetime, end_utc: datetime, settings: dict = None) -> list[tuple[datetime, datetime]]:
+    """Busy times across every chosen calendar. Google's free/busy check covers most calendars; subscribed
+    feeds it can't answer for (like an Outlook link) are read event by event instead."""
     service = get_calendar_service(user_id)
+    calendars = chosen_calendars(user_id, settings or {})
     res = service.freebusy().query(body={
         "timeMin": start_utc.isoformat() + "Z",
         "timeMax": end_utc.isoformat() + "Z",
-        "items": [{"id": "primary"}],
+        "items": [{"id": c["id"]} for c in calendars],
     }).execute()
-    busy = res["calendars"]["primary"].get("busy", [])
-    return [
-        (datetime.fromisoformat(b["start"].replace("Z", "+00:00")), datetime.fromisoformat(b["end"].replace("Z", "+00:00")))
-        for b in busy
-    ]
+    busy = []
+    for cal in calendars:
+        result = res.get("calendars", {}).get(cal["id"], {})
+        if not result.get("errors"):
+            busy += [(_parse(b["start"]), _parse(b["end"])) for b in result.get("busy", [])]
+            continue
+        try:
+            for e in _raw_events(service, cal["id"], start_utc, end_utc):
+                # All-day entries (reminders, deadlines) and events marked "free" don't block time
+                if e.get("status") == "cancelled" or e.get("transparency") == "transparent" or "date" in e["start"]:
+                    continue
+                busy.append((_parse(e["start"]["dateTime"]), _parse(e["end"]["dateTime"])))
+        except Exception as err:
+            print(f"[availability] couldn't read {cal['name']}: {err}")
+    return busy
 
 
 def free_slots(settings: dict, busy: list[tuple[datetime, datetime]], now: datetime = None) -> list[tuple[datetime, datetime]]:
@@ -174,7 +236,7 @@ def fill_availability(body: str, user_id: str, settings: dict, recipient_tz: str
     text = ""
     try:
         now = datetime.utcnow()
-        busy = _busy_intervals(user_id, now, now + timedelta(days=settings.get("avail_days_ahead", 7) + 2))
+        busy = _busy_intervals(user_id, now, now + timedelta(days=settings.get("avail_days_ahead", 7) + 2), settings)
         text = format_availability(free_slots(settings, busy), recipient_tz, settings.get("avail_max_days", 4))
     except Exception as e:
         print(f"[availability] calendar lookup failed, using written availability: {e}")

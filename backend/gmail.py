@@ -23,6 +23,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.labels",
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.freebusy",
+    "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ]
 
 CREDS_FILE = Path(__file__).parent / "credentials.json"

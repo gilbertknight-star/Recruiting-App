@@ -585,9 +585,21 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
 def calendar_events(start: str, end: str, user=Depends(get_current_user)):
     """Events from the user's Google Calendar between two ISO dates (UTC)."""
     try:
-        return gcal.list_events(user.id, datetime.fromisoformat(start[:19]), datetime.fromisoformat(end[:19]))
+        return gcal.list_events(user.id, datetime.fromisoformat(start[:19]), datetime.fromisoformat(end[:19]), get_settings(user.id))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Couldn't read Google Calendar: {e}")
+
+
+@app.get("/calendar/list")
+def calendar_list(user=Depends(get_current_user)):
+    """The user's Google calendars, with which ones the app reads (Settings.calendar_ids, or Google's checked ones)."""
+    settings = get_settings(user.id)
+    try:
+        calendars = gcal.list_calendars(user.id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't read your calendar list. Reconnect Gmail in Settings. ({e})")
+    chosen = {c["id"] for c in gcal.chosen_calendars(user.id, settings)}
+    return [{**c, "used": c["id"] in chosen} for c in calendars]
 
 
 @app.get("/calendar/availability-preview")
@@ -633,6 +645,7 @@ class SettingsUpdate(BaseModel):
     avail_max_days: Optional[int] = None
     email_font: Optional[str] = None
     email_font_size: Optional[int] = None
+    calendar_ids: Optional[list[str]] = None
 
 
 @app.get("/settings")

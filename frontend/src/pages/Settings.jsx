@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile, getAvailabilityPreview } from '../api/client'
+import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile, getAvailabilityPreview, getCalendarList } from '../api/client'
 import RichTextEditor, { plainToHtml } from '../components/RichTextEditor'
 
 export default function Settings() {
@@ -7,6 +7,20 @@ export default function Settings() {
   const [gmailConnected, setGmailConnected] = useState(false)
   const [saved, setSaved] = useState(false)
   const [preview, setPreview] = useState('')
+  const [calendars, setCalendars] = useState(null)
+  const [calendarError, setCalendarError] = useState('')
+
+  useEffect(() => {
+    getCalendarList()
+      .then(setCalendars)
+      .catch(e => setCalendarError(e.response?.data?.detail || e.message))
+  }, [])
+
+  function toggleCalendar(id) {
+    const current = settings.calendar_ids || calendars.filter(c => c.used).map(c => c.id)
+    set('calendar_ids', current.includes(id) ? current.filter(x => x !== id) : [...current, id])
+  }
+  const usedIds = settings?.calendar_ids || (calendars || []).filter(c => c.used).map(c => c.id)
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => setSettings({}))
@@ -77,6 +91,21 @@ export default function Settings() {
               />
               <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
                 Sends you a hidden copy of every outreach email. Recipients can't see it. Leave blank to turn off.
+              </p>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={lbl}>Calendars the app reads</label>
+              {calendarError && <p style={{ color: 'var(--muted)', fontSize: 12 }}>{calendarError}</p>}
+              {!calendars && !calendarError && <p style={{ color: 'var(--muted)', fontSize: 12 }}>Loading…</p>}
+              {calendars && calendars.map(c => (
+                <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, padding: '3px 0' }}>
+                  <input type="checkbox" style={{ width: 'auto' }} checked={usedIds.includes(c.id)} onChange={() => toggleCalendar(c.id)} />
+                  <span style={{ width: 10, height: 10, borderRadius: 3, background: c.color, flexShrink: 0 }} />
+                  {c.name}{c.primary && <span style={{ color: 'var(--muted)' }}> (main)</span>}
+                </label>
+              ))}
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                Checked calendars show on the Calendar page and count as busy for live availability. Coffee chats you set in the app are added to your main calendar.
               </p>
             </div>
           </div>

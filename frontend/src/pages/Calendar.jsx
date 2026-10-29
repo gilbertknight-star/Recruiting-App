@@ -6,6 +6,9 @@ const DAYS_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 const MONTHS = ['January','February','March','April','May','June',
                 'July','August','September','October','November','December']
 const HOURS = Array.from({ length: 13 }, (_, i) => i + 8) // 8am–8pm
+const WEEK_COLUMNS = '56px repeat(7, minmax(0, 1fr))'
+// Header rows get the same scrollbar gutter as the scrolling hour grid underneath them
+const WEEK_ROW = { display: 'grid', gridTemplateColumns: WEEK_COLUMNS, overflowY: 'hidden', scrollbarGutter: 'stable' }
 
 const E = {
   sent:     { label: 'Sent',       color: '#60a5fa', bg: 'rgba(96,165,250,0.15)'  },
@@ -62,7 +65,9 @@ function buildEventMap(contacts, googleEvents = []) {
     const d = g.all_day ? parseLocalDate(g.start.slice(0, 10)) : new Date(g.start)
     add(localDateKey(d), {
       ...E.google,
-      contact: { name: g.title, title: 'Google Calendar', firm: '', meeting_end: g.all_day ? null : g.end },
+      color: g.color || E.google.color,
+      bg: `${g.color || E.google.color}26`,
+      contact: { name: g.title, title: g.calendar || 'Google Calendar', firm: '', meeting_end: g.all_day ? null : g.end },
       time: g.all_day ? null : d,
     })
   }
@@ -249,16 +254,17 @@ export default function Calendar() {
 
       {/* ── Month View ── */}
       {view === 'month' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 16, flex: 1, minHeight: 0 }}>
-          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gridTemplateRows: 'minmax(0, 1fr)', gap: 16, flex: 1, minHeight: 0 }}>
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
             {/* Day headers */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid var(--border)' }}>
               {DAYS_SHORT.map(d => (
                 <div key={d} style={{ padding: '10px 0', textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--muted)', letterSpacing: '0.05em' }}>{d}</div>
               ))}
             </div>
-            {/* Cells */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: `repeat(${cells.length / 7}, 1fr)`, flex: 1 }}>
+            {/* Cells: rows grow with their events and the month scrolls, like the week view */}
+            <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: `repeat(${cells.length / 7}, minmax(110px, auto))`, minHeight: '100%' }}>
               {cells.map((day, i) => {
                 if (!day) return <div key={`e-${i}`} style={{ borderRight: i % 7 !== 6 ? '1px solid var(--border)' : 'none', borderBottom: '1px solid var(--border)', background: 'rgba(0,0,0,0.1)' }} />
                 const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
@@ -290,7 +296,7 @@ export default function Calendar() {
                     }}>
                       {day}
                     </div>
-                    {events.slice(0, 3).map((e, j) => (
+                    {events.map((e, j) => (
                       <div key={j} style={{
                         fontSize: 11, borderRadius: 4, padding: '2px 6px',
                         background: e.bg, color: e.color,
@@ -300,12 +306,10 @@ export default function Calendar() {
                         {e.label} · {e.contact.name.split(' ')[0]}
                       </div>
                     ))}
-                    {events.length > 3 && (
-                      <div style={{ fontSize: 11, color: 'var(--muted)', paddingLeft: 6 }}>+{events.length - 3} more</div>
-                    )}
                   </div>
                 )
               })}
+            </div>
             </div>
           </div>
 
@@ -318,7 +322,9 @@ export default function Calendar() {
       {view === 'week' && (
         <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
           {/* Day headers */}
-          <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          {/* Columns are minmax(0, 1fr) so long event text can't widen a day, and every row reserves the
+              hour grid's scrollbar width so the header, all-day row and hour lines stay aligned */}
+          <div style={{ ...WEEK_ROW, borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
             <div />
             {weekDays.map((d, i) => {
               const key = localDateKey(d)
@@ -345,7 +351,7 @@ export default function Calendar() {
             const hasAny = allDayEvents.some(ev => ev.length > 0)
             if (!hasAny) return null
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', borderBottom: '1px solid var(--border)', flexShrink: 0, minHeight: 36 }}>
+              <div style={{ ...WEEK_ROW, borderBottom: '1px solid var(--border)', flexShrink: 0, minHeight: 36 }}>
                 <div style={{ fontSize: 10, color: 'var(--muted)', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', paddingRight: 8 }}>all-day</div>
                 {allDayEvents.map((events, i) => (
                   <div key={i} style={{ borderLeft: '1px solid var(--border)', padding: '4px 4px', display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -361,9 +367,9 @@ export default function Calendar() {
           })()}
 
           {/* Hour grid */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
+          <div style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
             {HOURS.map(hour => (
-              <div key={hour} style={{ display: 'grid', gridTemplateColumns: '56px repeat(7, 1fr)', minHeight: 60, borderBottom: '1px solid var(--border)' }}>
+              <div key={hour} style={{ display: 'grid', gridTemplateColumns: WEEK_COLUMNS, minHeight: 60, borderBottom: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 11, color: 'var(--muted)', textAlign: 'right', paddingRight: 8, paddingTop: 4, flexShrink: 0 }}>
                   {hour === 12 ? '12 PM' : hour < 12 ? `${hour} AM` : `${hour - 12} PM`}
                 </div>
