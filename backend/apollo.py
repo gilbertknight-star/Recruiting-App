@@ -87,13 +87,18 @@ def _saved_contact(c: dict) -> dict:
     }
 
 
-def search_saved(keywords: str = "", list_id: str = "", page: int = 1, per_page: int = 25) -> dict:
+def search_saved(keywords: str = "", list_id: str = "", page: int = 1, per_page: int = 25,
+                 titles: list[str] = None, seniorities: list[str] = None) -> dict:
     """Contacts already saved in the Apollo account. No credits: they were revealed when saved."""
     payload = {"page": page, "per_page": per_page, "sort_by_field": "contact_created_at", "sort_ascending": False}
     if keywords:
         payload["q_keywords"] = keywords
     if list_id:
         payload["contact_label_ids"] = [list_id]
+    if titles:
+        payload["person_titles"] = titles
+    if seniorities:
+        payload["person_seniorities"] = seniorities
     data = _post("contacts/search", payload)
     pagination = data.get("pagination") or {}
     return {
@@ -104,11 +109,12 @@ def search_saved(keywords: str = "", list_id: str = "", page: int = 1, per_page:
     }
 
 
-def all_saved(keywords: str = "", list_id: str = "") -> list[dict]:
+def all_saved(keywords: str = "", list_id: str = "", titles: list[str] = None,
+              seniorities: list[str] = None) -> list[dict]:
     """Every saved contact matching the filters, 100 per page."""
     people, page = [], 1
     while True:
-        res = search_saved(keywords, list_id, page, 100)
+        res = search_saved(keywords, list_id, page, 100, titles, seniorities)
         people += res["people"]
         if not res["people"] or len(people) >= res["total"]:
             return people

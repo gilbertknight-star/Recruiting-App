@@ -468,6 +468,8 @@ def _import_apollo_people(user_id: str, people: list[dict]) -> dict:
 class ApolloSavedSearchRequest(BaseModel):
     keywords: str = ""
     list_id: str = ""
+    titles: Optional[list[str]] = None
+    seniorities: Optional[list[str]] = None
     page: int = 1
     per_page: int = 25
 
@@ -477,6 +479,8 @@ class ApolloSavedImportRequest(BaseModel):
     all: bool = False
     keywords: str = ""
     list_id: str = ""
+    titles: Optional[list[str]] = None
+    seniorities: Optional[list[str]] = None
 
 
 @app.get("/apollo/lists")
@@ -490,7 +494,7 @@ def apollo_lists(user=Depends(get_current_user)):
 @app.post("/apollo/saved")
 def apollo_saved(req: ApolloSavedSearchRequest, user=Depends(get_current_user)):
     try:
-        return apollo.search_saved(req.keywords, req.list_id, req.page, req.per_page)
+        return apollo.search_saved(req.keywords, req.list_id, req.page, req.per_page, req.titles, req.seniorities)
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -498,7 +502,8 @@ def apollo_saved(req: ApolloSavedSearchRequest, user=Depends(get_current_user)):
 @app.post("/apollo/saved/import")
 def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_user)):
     try:
-        people = apollo.all_saved(req.keywords, req.list_id) if req.all else (req.people or [])
+        people = (apollo.all_saved(req.keywords, req.list_id, req.titles, req.seniorities)
+                  if req.all else (req.people or []))
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))
     if not people:

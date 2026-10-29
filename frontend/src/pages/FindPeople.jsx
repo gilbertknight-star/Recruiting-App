@@ -2,25 +2,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apolloSearch, apolloReveal } from '../api/client'
 import SavedInApollo from '../components/SavedInApollo'
+import { SENIORITIES, splitList } from '../lib/apolloFilters'
 
-const SENIORITIES = [
-  { value: 'entry', label: 'Analyst / Entry' },
-  { value: 'senior', label: 'Associate / Senior' },
-  { value: 'manager', label: 'Manager' },
-  { value: 'director', label: 'Director' },
-  { value: 'vp', label: 'VP' },
-  { value: 'partner', label: 'MD / Partner' },
-]
 const PER_PAGE = 25
 
 // Free LinkedIn people search; the free Apollo search hides last names, so this matches on first name, firm and title
 function linkedinSearchUrl(name, firm, title) {
   const keywords = [name, firm, title].filter(Boolean).join(' ')
   return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(keywords)}`
-}
-
-function splitList(value) {
-  return value.split(',').map(s => s.trim()).filter(Boolean)
 }
 
 export default function FindPeople() {

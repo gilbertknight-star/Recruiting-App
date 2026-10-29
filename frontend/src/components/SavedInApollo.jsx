@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apolloLists, apolloSaved, apolloImportSaved, getContacts } from '../api/client'
+import { SENIORITIES, splitList } from '../lib/apolloFilters'
 
 const PER_PAGE = 25
 
@@ -8,6 +9,8 @@ export default function SavedInApollo() {
   const [lists, setLists] = useState([])
   const [listId, setListId] = useState('')
   const [keywords, setKeywords] = useState('')
+  const [titles, setTitles] = useState('')
+  const [seniorities, setSeniorities] = useState([])
   const [results, setResults] = useState(null)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState({})
@@ -21,18 +24,29 @@ export default function SavedInApollo() {
   useEffect(() => {
     apolloLists().then(setLists).catch(e => setError(e.response?.data?.detail || e.message))
     refreshContacts()
-    load(1, '', '')
+    load(1)
   }, [])
 
   function refreshContacts() {
     return getContacts().then(cs => setInContacts(new Set(cs.map(c => (c.email || '').toLowerCase())))).catch(() => {})
   }
 
-  async function load(nextPage = 1, kw = keywords, list = listId) {
+  // Current filters as the API expects them; overrides cover state that hasn't re-rendered yet
+  function filters(overrides = {}) {
+    return {
+      keywords: keywords.trim(),
+      list_id: listId,
+      titles: splitList(titles),
+      seniorities,
+      ...overrides,
+    }
+  }
+
+  async function load(nextPage = 1, overrides = {}) {
     setLoading(true)
     setError('')
     try {
-      const data = await apolloSaved({ keywords: kw.trim(), list_id: list, page: nextPage, per_page: PER_PAGE })
+      const data = await apolloSaved({ ...filters(overrides), page: nextPage, per_page: PER_PAGE })
       setResults(data)
       setPage(nextPage)
       setSelected({})
@@ -59,6 +73,12 @@ export default function SavedInApollo() {
     }
   }
 
+  function toggleSeniority(value) {
+    const next = seniorities.includes(value) ? seniorities.filter(x => x !== value) : [...seniorities, value]
+    setSeniorities(next)
+    load(1, { seniorities: next })
+  }
+
   const people = results?.people || []
   const isIn = p => p.email && inContacts.has(p.email.toLowerCase())
   const selectable = people.filter(p => p.email && !isIn(p))
@@ -68,20 +88,44 @@ export default function SavedInApollo() {
 
   return (
     <div>
-      <form className="card" onSubmit={e => { e.preventDefault(); load(1) }} style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr auto', gap: 12, alignItems: 'end', marginBottom: 16 }}>
-        <div>
-          <label style={lbl}>List</label>
-          <select value={listId} onChange={e => { setListId(e.target.value); load(1, keywords, e.target.value) }}>
-            <option value="">All saved contacts</option>
-            {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.count.toLocaleString()})</option>)}
-          </select>
+      <form className="card" onSubmit={e => { e.preventDefault(); load(1) }} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+          <div>
+            <label style={lbl}>List</label>
+            <select value={listId} onChange={e => { setListId(e.target.value); load(1, { list_id: e.target.value }) }}>
+              <option value="">All saved contacts</option>
+              {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.count.toLocaleString()})</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Titles (comma separated)</label>
+            <input value={titles} onChange={e => setTitles(e.target.value)} placeholder="Vice President, Associate" />
+          </div>
+          <div>
+            <label style={lbl}>Search name or firm</label>
+            <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Lazard" />
+          </div>
+          <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Loading…' : 'Search'}</button>
         </div>
-        <div>
-          <label style={lbl}>Search name, firm or title</label>
-          <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Lazard" />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ ...lbl, marginBottom: 0, marginRight: 4 }}>Level</span>
+          {SENIORITIES.map(s => (
+            <button
+              type="button"
+              key={s.value}
+              className="btn-sm"
+              onClick={() => toggleSeniority(s.value)}
+              style={{
+                background: seniorities.includes(s.value) ? 'var(--accent)' : 'var(--surface2)',
+                color: seniorities.includes(s.value) ? '#fff' : 'var(--text)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
-        <button type="submit" className="btn-primary" disabled={loading}>{loading ? 'Loading…' : 'Search'}</button>
-        {error && <p style={{ color: 'var(--red)', fontSize: 13, gridColumn: '1 / -1' }}>{error}</p>}
+        {error && <p style={{ color: 'var(--red)', fontSize: 13 }}>{error}</p>}
       </form>
 
       {summary && (
@@ -161,7 +205,7 @@ export default function SavedInApollo() {
                 <>
                   <span style={{ fontSize: 13 }}>Add all {results.total.toLocaleString()} to Contacts?</span>
                   <button className="btn-secondary btn-sm" onClick={() => setConfirmAll(false)} disabled={importing}>Cancel</button>
-                  <button className="btn-primary btn-sm" disabled={importing} onClick={() => runImport({ all: true, keywords: keywords.trim(), list_id: listId })}>
+                  <button className="btn-primary btn-sm" disabled={importing} onClick={() => runImport({ all: true, ...filters() })}>
                     {importing ? 'Adding…' : 'Confirm'}
                   </button>
                 </>
