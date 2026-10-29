@@ -730,6 +730,8 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
 class DealSearchRequest(BaseModel):
     bank: str
     days: int = 90
+    focus: str = ""        # "", "mna", "equity" or "debt"
+    more: bool = False     # skip companies already found for this bank
 
 
 class DealUpdate(BaseModel):
@@ -743,11 +745,51 @@ def search_deals(req: DealSearchRequest, user=Depends(get_current_user)):
     if not bank:
         raise HTTPException(status_code=400, detail="Enter a bank")
     try:
-        found = deals.research_deals(bank, max(7, min(req.days, 365)))
+        skip = [d["company"] for d in deals.list_deals(user.id, bank)] if req.more else None
+        found = deals.research_deals(bank, max(7, min(req.days, 365)), req.focus, skip)
     except deals.DealSearchError as e:
         raise HTTPException(status_code=502, detail=str(e))
     added = deals.save_deals(user.id, bank, found)
     return {"found": len(found), "added": len(added), "deals": deals.list_deals(user.id, bank)}
+
+
+class DealIn(BaseModel):
+    bank: str
+    company: str
+    counterparty: str = ""
+    deal_type: str = ""
+    bank_role: str = ""
+    announced_date: Optional[str] = None
+    summary: str = ""
+    source_url: str = ""
+
+
+@app.post("/deals")
+def add_deal(body: DealIn, user=Depends(get_current_user)):
+    """Add a deal by hand (or after filling it from a link)."""
+    if not body.bank.strip() or not body.company.strip():
+        raise HTTPException(status_code=400, detail="Enter the bank and the company")
+    deal = {**body.model_dump(), "bank": body.bank.strip(), "company": body.company.strip(),
+            "announced_date": body.announced_date or None}
+    added = deals.save_deals(user.id, deal.pop("bank"), [deal])
+    if not added:
+        raise HTTPException(status_code=409, detail="That deal is already on your list")
+    return added[0]
+
+
+class DealLinkRequest(BaseModel):
+    url: str
+
+
+@app.post("/deals/extract")
+def extract_deal(req: DealLinkRequest, user=Depends(get_current_user)):
+    """Read a press release or article and pre-fill the Add deal form (about $0.05)."""
+    if not req.url.strip().startswith("http"):
+        raise HTTPException(status_code=400, detail="Paste a full link starting with http")
+    try:
+        return deals.extract_from_link(req.url.strip())
+    except deals.DealSearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @app.get("/deals")

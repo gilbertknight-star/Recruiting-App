@@ -11,7 +11,7 @@ function kindOf(c) {
 }
 
 /** Contacts due for their weekly follow-up: draft with Claude, review, then send as a reply in the same thread. */
-export default function FollowUps({ contacts, onChanged }) {
+export default function FollowUps({ contacts, onChanged, side = 'banker' }) {
   const [selected, setSelected] = useState({})
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
@@ -20,6 +20,7 @@ export default function FollowUps({ contacts, onChanged }) {
 
   const today = new Date(); today.setHours(23, 59, 59, 999)
   const due = contacts
+    .filter(c => (c.contact_type || 'banker') === side)
     .filter(c => c.email && (c.followup_email || (c.follow_up_due && new Date(`${c.follow_up_due}T12:00:00`) <= today)))
     .sort((a, b) => (a.follow_up_due || '') < (b.follow_up_due || '') ? -1 : 1)
 
@@ -123,7 +124,7 @@ export default function FollowUps({ contacts, onChanged }) {
         </table>
       )}
       <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
-        "No reply" and "Reconnect" use the follow-up templates in Email Studio. Follow-ups go out as replies in the original email thread, and the next one is due a week later. A contact who replies switches to Reconnect.
+        "No reply" and "Reconnect" use the {side === 'client' ? 'client ' : ''}follow-up templates in {side === 'client' ? "the client side's " : ''}Email Studio. Follow-ups go out as replies in the original email thread, and the next one is due a week later. A contact who replies switches to Reconnect.
       </p>
 
       {editing && (

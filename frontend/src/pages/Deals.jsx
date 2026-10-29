@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import DealBrief from '../components/DealBrief'
+import AddDealForm from '../components/AddDealForm'
 import { getDeals, searchDeals, updateDeal, deleteDeal, getDealClientTitles } from '../api/client'
 import { SearchApollo } from './FindPeople'
 
@@ -27,6 +28,9 @@ export default function Deals() {
   const [openDeal, setOpenDeal] = useState(null)
   const [clientTitles, setClientTitles] = useState([])
   const [hideSkipped, setHideSkipped] = useState(true)
+  const [focus, setFocus] = useState('')
+  const [more, setMore] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
   const [briefId, setBriefId] = useState(null)
   const [params] = useSearchParams()
 
@@ -41,10 +45,11 @@ export default function Deals() {
     setError('')
     setMsg('')
     try {
-      const res = await searchDeals(bank.trim(), days)
+      const res = await searchDeals(bank.trim(), days, focus, more)
       setMsg(res.found === 0
-        ? `No deals found for ${bank.trim()} in the last ${days} days.`
-        : `Found ${res.found} deal${res.found === 1 ? '' : 's'} for ${bank.trim()} · ${res.added} new.`)
+        ? `No ${more ? 'more ' : ''}deals found for ${bank.trim()} in the last ${days} days.`
+        : `Found ${res.found} ${more ? 'more ' : ''}deal${res.found === 1 ? '' : 's'} for ${bank.trim()} · ${res.added} new.`
+          + (res.added ? '' : ' Try a different deal type, or add deals yourself.'))
       setDeals(await getDeals())
       setBankFilter(bank.trim())
     } catch (e) {
@@ -72,14 +77,25 @@ export default function Deals() {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+        <div>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>Deals</h1>
         <p style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>
           Find companies a bank advised recently, then reach the finance leaders who worked with that bank's team.
         </p>
+        </div>
+        {!showAdd && <button className="btn-secondary" onClick={() => setShowAdd(true)}>+ Add deal</button>}
       </div>
 
-      <form className="card" onSubmit={e => { e.preventDefault(); if (bank.trim()) setConfirming(true); else setError('Enter a bank first.') }}
+      {showAdd && (
+        <AddDealForm
+          defaultBank={bankFilter || bank.trim()}
+          onCancel={() => setShowAdd(false)}
+          onAdded={d => { setDeals(ds => [d, ...ds]); setShowAdd(false); setMsg(`Added ${d.company} to ${d.bank}.`) }}
+        />
+      )}
+
+      <form className="card" onSubmit={e => { e.preventDefault(); setMore(false); if (bank.trim()) setConfirming(true); else setError('Enter a bank first.') }}
         style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap', marginBottom: 16 }}>
         <div style={{ flex: '1 1 220px' }}>
           <label style={lbl}>Bank</label>
@@ -91,14 +107,29 @@ export default function Deals() {
             {[30, 60, 90, 180].map(d => <option key={d} value={d}>Last {d} days</option>)}
           </select>
         </div>
+        <div style={{ width: 170 }}>
+          <label style={lbl}>Deal type</label>
+          <select value={focus} onChange={e => setFocus(e.target.value)}>
+            <option value="">All deal types</option>
+            <option value="mna">M&amp;A only</option>
+            <option value="equity">IPOs &amp; equity</option>
+            <option value="debt">Debt financings</option>
+          </select>
+        </div>
         {confirming ? (
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{ fontSize: 13 }}>Search the web for {bank.trim()}'s deals? About $1 in Claude usage.</span>
+            <span style={{ fontSize: 13 }}>Search the web for {more ? 'more of ' : ''}{bank.trim()}'s deals? About $1 in Claude usage.</span>
             <button type="button" className="btn-secondary btn-sm" onClick={() => setConfirming(false)}>Cancel</button>
             <button type="button" className="btn-primary btn-sm" onClick={runSearch}>Search</button>
           </div>
         ) : (
-          <button type="submit" className="btn-primary" disabled={searching}>{searching ? 'Searching the web… (about a minute)' : 'Find deals'}</button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn-primary" disabled={searching}>{searching ? 'Searching the web… (about a minute)' : 'Find deals'}</button>
+            {!searching && bank.trim() && deals.some(d => d.bank.toLowerCase() === bank.trim().toLowerCase()) && (
+              <button type="button" className="btn-secondary" title="Search again, skipping companies already on your list"
+                onClick={() => { setMore(true); setConfirming(true) }}>Find more</button>
+            )}
+          </div>
         )}
       </form>
       {error && <p style={{ color: 'var(--red)', fontSize: 13, marginTop: -8, marginBottom: 12 }}>{error}</p>}

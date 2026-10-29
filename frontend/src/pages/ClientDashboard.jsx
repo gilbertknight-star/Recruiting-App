@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getDealsOverview } from '../api/client'
+import { getDealsOverview, getContacts } from '../api/client'
+import FollowUps from '../components/FollowUps'
 
 const STATUS_COLOR = { new: '#60a5fa', pursuing: '#22c55e', skipped: '#64748b' }
 
@@ -17,8 +18,17 @@ function Stat({ label, value, color }) {
 export default function ClientDashboard() {
   const [banks, setBanks] = useState(null)
   const [open, setOpen] = useState({})
+  const [contacts, setContacts] = useState([])
 
-  useEffect(() => { getDealsOverview().then(setBanks).catch(() => setBanks([])) }, [])
+  useEffect(() => {
+    getDealsOverview().then(setBanks).catch(() => setBanks([]))
+    getContacts().then(setContacts).catch(() => {})
+  }, [])
+
+  async function refresh() {
+    setContacts(await getContacts())
+    setBanks(await getDealsOverview())
+  }
   if (!banks) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
 
   const sum = k => banks.reduce((n, b) => n + b[k], 0)
@@ -38,6 +48,8 @@ export default function ClientDashboard() {
         <Stat label="Emailed" value={sum('emailed')} color="#60a5fa" />
         <Stat label="Replied" value={sum('replied')} color="#c084fc" />
       </div>
+
+      <FollowUps contacts={contacts} side="client" onChanged={refresh} />
 
       {banks.length === 0 ? (
         <div className="card" style={{ color: 'var(--muted)', fontSize: 13 }}>

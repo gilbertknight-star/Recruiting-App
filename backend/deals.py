@@ -16,6 +16,7 @@ load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("CLAUDE_API_KEY"))
 MODEL = "claude-opus-5-5"
 MAX_SEARCHES = 6          # caps web-search spend per lookup
+MAX_SEARCHES_MORE = 10    # "Find more" or a single deal type digs deeper
 MAX_DEALS = 15
 
 # People at a company who work directly with its bankers
@@ -29,11 +30,30 @@ class DealSearchError(Exception):
     pass
 
 
-def _prompt(bank: str, days: int) -> str:
+# "Find more" can narrow a search to one kind of deal; big banks do far more deals than one search covers
+FOCUS = {
+    "": "",
+    "mna": "Only look for M&A: mergers, acquisitions, divestitures and spin-offs. Announcements name advisors near the end, e.g. \"{bank} is serving as financial advisor to\".",
+    "equity": "Only look for equity offerings: IPOs, follow-on offerings and convertible notes, where {bank} is a bookrunner or underwriter.",
+    "debt": "Only look for debt deals: bond and notes offerings, term loans and credit facilities, where {bank} is a bookrunner, arranger or underwriter.",
+}
+
+
+def _prompt(bank: str, days: int, focus: str = "", skip: list[str] = None) -> str:
     since = (date.today() - timedelta(days=days)).isoformat()
+    focus_line = FOCUS.get(focus, "").format(bank=bank)
+    skip_line = (f"Skip these companies, which are already on the list: {', '.join(skip)}. Find different deals."
+                 if skip else "")
     return f"""Find deals announced since {since} (the last {days} days) where {bank} was a financial advisor, underwriter or placement agent.
 
 Look at press releases (Business Wire, PR Newswire, GlobeNewswire, company newsrooms), SEC filings, and {bank}'s own news or transactions pages.
+Large banks work on many deals, so run several different searches before concluding there are few: vary the wording, search by
+sector (technology, healthcare, energy, industrials, consumer, financials), by month, and on individual newswire sites. Don't
+put whole sentences in quotes; search terms like: {bank} financial advisor acquisition announced. The bank may be named by its
+legal entity (for example Citigroup Global Markets, J.P. Morgan Securities, Goldman Sachs & Co., BofA Securities, Morgan
+Stanley & Co.). Include deals where {bank} is one of several advisors.
+{focus_line}
+{skip_line}
 
 For each deal, "company" is {bank}'s client: the company whose executives worked with {bank}'s bankers. If {bank} advised the seller or target, that's the seller/target; if it advised the buyer, that's the buyer; for an IPO or financing, it's the issuer.
 
@@ -73,16 +93,18 @@ def _parse(text: str) -> list[dict]:
     return deals[:MAX_DEALS]
 
 
-def research_deals(bank: str, days: int = 90) -> list[dict]:
-    """Ask Claude, with web search, for the bank's recent deals."""
-    messages = [{"role": "user", "content": _prompt(bank, days)}]
+def research_deals(bank: str, days: int = 90, focus: str = "", skip: list[str] = None) -> list[dict]:
+    """Ask Claude, with web search, for the bank's recent deals. focus narrows to one deal type;
+    skip lists companies already found so a repeat search turns up new ones."""
+    messages = [{"role": "user", "content": _prompt(bank, days, focus, skip)}]
     for _ in range(4):  # a long search can pause mid-turn; resume it a few times at most
         try:
             response = client.beta.messages.create(
                 model=MODEL,
                 max_tokens=16000,
                 output_config={"effort": "medium"},
-                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": MAX_SEARCHES}],
+                tools=[{"type": "web_search_20260209", "name": "web_search",
+                        "max_uses": MAX_SEARCHES_MORE if (focus or skip) else MAX_SEARCHES}],
                 # If a safety check declines the request, Anthropic re-runs it on a suitable fallback model
                 betas=["server-side-fallback-2026-07-01"],
                 fallbacks="default",
@@ -100,6 +122,56 @@ def research_deals(bank: str, days: int = 90) -> list[dict]:
         messages.append({"role": "assistant", "content": response.content})
     text = "".join(b.text for b in response.content if b.type == "text")
     return _parse(text)
+
+
+def extract_from_link(url: str) -> dict:
+    """Read one deal announcement (press release, filing, article) and pull out the deal's details."""
+    prompt = f"""Read this deal announcement: {url}
+
+Respond with only this JSON inside <deal> tags, no other text. "bank" is the investment bank named as financial advisor,
+underwriter or placement agent (if several, the one listed first), and "company" is that bank's client: the seller or target
+if it advised that side, the buyer if it advised the buyer, the issuer for an IPO or financing.
+<deal>
+{{"bank": "", "company": "", "counterparty": "", "deal_type": "M&A sell-side | M&A buy-side | IPO | Debt financing | Equity financing | Restructuring | Other",
+  "bank_role": "", "announced_date": "YYYY-MM-DD", "summary": "one sentence", "other_banks": ["other advisors named, with roles"]}}
+</deal>"""
+    try:
+        response = client.beta.messages.create(
+            model=MODEL,
+            max_tokens=8000,
+            output_config={"effort": "low"},
+            tools=[{"type": "web_fetch_20260209", "name": "web_fetch", "max_uses": 2}],
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIStatusError as e:
+        raise DealSearchError(f"Claude API error {e.status_code}: {e.message}")
+    except anthropic.APIConnectionError:
+        raise DealSearchError("Couldn't reach the Claude API. Check your internet connection.")
+    log_claude(response, "read deal link")
+    if response.stop_reason == "refusal":
+        raise DealSearchError("Claude declined to read this page.")
+    text = "".join(b.text for b in response.content if b.type == "text")
+    m = re.search(r"<deal>\s*(\{.*\})\s*</deal>", text, re.DOTALL)
+    try:
+        d = json.loads(m.group(1)) if m else {}
+    except json.JSONDecodeError:
+        d = {}
+    if not d.get("company"):
+        raise DealSearchError("Couldn't find a deal on that page. Fill in the details by hand instead.")
+    announced = (d.get("announced_date") or "").strip()
+    return {
+        "bank": (d.get("bank") or "").strip(),
+        "company": d["company"].strip(),
+        "counterparty": (d.get("counterparty") or "").strip(),
+        "deal_type": (d.get("deal_type") or "").strip(),
+        "bank_role": (d.get("bank_role") or "").strip(),
+        "announced_date": announced if re.fullmatch(r"\d{4}-\d{2}-\d{2}", announced) else "",
+        "summary": (d.get("summary") or "").strip(),
+        "source_url": url,
+        "other_banks": d.get("other_banks") or [],
+    }
 
 
 def _brief_prompt(deal: dict) -> str:
