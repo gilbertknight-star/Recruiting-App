@@ -354,7 +354,8 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
     firm_limit = 3 if firm_limit is None else firm_limit  # 0 turns the safeguard off
 
     chosen = [all_contacts[cid] for cid in req.contact_ids
-              if cid in all_contacts and all_contacts[cid].get("generated_email") and all_contacts[cid].get("tier") != "md_partner"]
+              if cid in all_contacts and all_contacts[cid].get("generated_email") and all_contacts[cid].get("email")
+              and all_contacts[cid].get("tier") != "md_partner"]
 
     # --- Plan: which day each email goes out, so no firm gets more than firm_limit a day ---
     first_day = date.fromisoformat(req.schedule_date) if (req.schedule_date and req.schedule_time) else today
@@ -948,19 +949,30 @@ def add_deal_contacts(deal_id: str, req: DealContactsRequest, user=Depends(get_c
     extra = _deal_fields(user.id, deal_id)
     if not extra:
         raise HTTPException(status_code=404, detail="Deal not found")
-    existing = {c.get("apollo_id") for c in get_all_contacts(user.id) if c.get("apollo_id")}
+    return _save_found_people(user.id, req.people, extra, "Found through Apollo for a client-side deal. Use Get contact info for their email.")
+
+
+@app.post("/contacts/from-apollo")
+def add_found_contacts(req: DealContactsRequest, user=Depends(get_current_user)):
+    """Save people from Find People as banker contacts, without spending credits (same as the client side)."""
+    return _save_found_people(user.id, req.people, {}, "Found through Apollo. Use Get contact info for their email.")
+
+
+def _save_found_people(user_id: str, people: list[DealPerson], extra: dict, note: str) -> dict:
+    existing = {c.get("apollo_id") for c in get_all_contacts(user_id) if c.get("apollo_id")}
     added, skipped = [], 0
-    for p in req.people:
+    for p in people:
         if p.apollo_id in existing:
             skipped += 1
             continue
-        added.append(create_contact(user.id, {
+        existing.add(p.apollo_id)
+        added.append(create_contact(user_id, {
             "name": f"{p.first_name} {p.last_name}".strip(),
             "email": "",
             "title": p.title,
             "firm": p.firm,
             "apollo_id": p.apollo_id,
-            "notes": "Found through Apollo for a client-side deal. Use Get contact info for their email.",
+            "notes": note,
             "status": "Cold",
             **extra,
         }))

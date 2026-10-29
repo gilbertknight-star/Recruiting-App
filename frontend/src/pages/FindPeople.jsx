@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { apolloSearch, apolloReveal, addDealContacts } from '../api/client'
+import { apolloSearch, apolloReveal, addDealContacts, addFoundContacts } from '../api/client'
 import SavedInApollo from '../components/SavedInApollo'
 import LinkedInAdd from '../components/LinkedInAdd'
 import { SENIORITIES, splitList } from '../lib/apolloFilters'
@@ -111,7 +111,8 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
     }))
     setError('')
     try {
-      const res = await addDealContacts(dealId, people)
+      // Free on both sides: saved without an email until you use Get contact info on the Contacts page
+      const res = dealId ? await addDealContacts(dealId, people) : await addFoundContacts(people)
       setDealSummary(res)
       setSelected({})
     } catch (e) {
@@ -144,6 +145,7 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
   const selectable = people.filter(p => !revealed[p.apollo_id])
   const selectedCount = Object.values(selected).filter(Boolean).length
   const allSelected = selectable.length > 0 && selectable.every(p => selected[p.apollo_id])
+  const contactsLabel = dealId ? 'Client Contacts' : 'Contacts'
   const totalPages = results ? Math.max(1, Math.ceil(Math.min(results.total, 50000) / PER_PAGE)) : 1
 
   return (
@@ -191,9 +193,9 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
 
       {dealSummary && (
         <div className="card" style={{ marginBottom: 16, borderColor: 'var(--green)' }}>
-          Added <strong>{dealSummary.added}</strong> to Client Contacts{dealSummary.skipped > 0 && <>, {dealSummary.skipped} already there</>}.
-          They're saved without an email for now; use Get contact info on the Client Contacts page when you're ready.{' '}
-          <Link to="/client/contacts" style={{ color: 'var(--accent)' }}>Go to Client Contacts →</Link>
+          Added <strong>{dealSummary.added}</strong> to {contactsLabel}{dealSummary.skipped > 0 && <>, {dealSummary.skipped} already there</>}.
+          They're saved without an email for now; use Get contact info on the {contactsLabel} page when you're ready.{' '}
+          <Link to={dealId ? '/client/contacts' : '/contacts'} style={{ color: 'var(--accent)' }}>Go to {contactsLabel} →</Link>
         </div>
       )}
       {summary && (
@@ -274,11 +276,9 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
                 ? `${selectedCount} selected · ${selectedCount} credit${selectedCount === 1 ? '' : 's'}`
                 : 'Search only · no credits'}
             </span>
-            {dealId && (
-              <button className="btn-primary btn-sm" disabled={selectedCount === 0} onClick={handleAddToClients} style={{ marginRight: 8 }}>
-                Add {selectedCount || ''} to Client Contacts
-              </button>
-            )}
+            <button className="btn-primary btn-sm" disabled={selectedCount === 0} onClick={handleAddToClients} style={{ marginLeft: 'auto', marginRight: 8 }}>
+              Add {selectedCount || ''} to {contactsLabel}
+            </button>
             {!results.credits_enabled ? (
               <span style={{ fontSize: 13, color: 'var(--muted)' }}>
                 Paid lookups are off. Set APOLLO_ALLOW_CREDITS=true in backend/.env to use Get contact info.
