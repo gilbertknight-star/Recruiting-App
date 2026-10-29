@@ -48,6 +48,12 @@ export const importRecruitingFolder = () => api.post('/gmail/import-recruiting')
 
 export const inviteUser = (email) => api.post(`/invite?email=${encodeURIComponent(email)}`).then(r => r.data)
 
-export const getScheduled = () => api.get('/scheduled').then(r => r.data)
+export const apolloSearch = (params) => api.post('/apollo/search', params).then(r => r.data)
+export const apolloReveal = (apolloIds) => api.post('/apollo/reveal', { apollo_ids: apolloIds }).then(r => r.data)
+export const apolloLists = () => api.get('/apollo/lists').then(r => r.data)
+export const apolloSaved = (params) => api.post('/apollo/saved', params).then(r => r.data)
+export const apolloImportSaved = (body) => api.post('/apollo/saved/import', body).then(r => r.data)
+
+export const getScheduled =() => api.get('/scheduled').then(r => r.data)
 export const browseFile = () => api.get('/browse-file').then(r => r.data)
 export const sendTestEmail = (subject, body) => api.post('/send-test', { subject, body }).then(r => r.data)

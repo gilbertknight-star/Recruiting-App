@@ -11,8 +11,9 @@ from db import supabase, ensure_user_defaults, DEV_MODE
 from contacts import (
     get_all_contacts, create_contact, update_contact, delete_contact,
     bulk_upsert_contacts, parse_csv, get_settings, update_settings,
-    get_templates, update_template, get_stats, increment_sent,
+    get_templates, update_template, get_stats, increment_sent, detect_tier,
 )
+import apollo
 from email_gen import generate_email, generate_batch, compose_free
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
@@ -408,6 +409,101 @@ def browse_file(user=Depends(get_current_user)):
     if not path:
         return {"path": None}
     return {"path": path.replace("/", "\\")}
+
+
+# --- Apollo ---
+
+class ApolloSearchRequest(BaseModel):
+    firm: str
+    titles: Optional[list[str]] = None
+    seniorities: Optional[list[str]] = None
+    locations: Optional[list[str]] = None
+    page: int = 1
+    per_page: int = 25
+
+
+class ApolloRevealRequest(BaseModel):
+    apollo_ids: list[str]
+
+
+@app.post("/apollo/search")
+def apollo_search(req: ApolloSearchRequest, user=Depends(get_current_user)):
+    try:
+        return apollo.search_people(req.firm, req.titles, req.seniorities, req.locations, req.page, req.per_page)
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/apollo/reveal")
+def apollo_reveal(req: ApolloRevealRequest, user=Depends(get_current_user)):
+    if not req.apollo_ids:
+        raise HTTPException(status_code=400, detail="No people selected")
+    try:
+        revealed = apollo.reveal_people(req.apollo_ids)
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return {**_import_apollo_people(user.id, revealed), "people": revealed}
+
+
+def _import_apollo_people(user_id: str, people: list[dict]) -> dict:
+    """Add Apollo people with an email to Contacts, skipping emails already there."""
+    new_contacts = [{
+        "user_id": user_id,
+        "name": p["name"],
+        "email": p["email"],
+        "title": p.get("title", ""),
+        "firm": p.get("firm", ""),
+        "linkedin_url": p.get("linkedin_url", ""),
+        "location": p.get("location", ""),
+        "school": "",
+        "notes": f"Source: Apollo (email {p.get('email_status') or 'unknown'})",
+        "tier": detect_tier(p.get("title", "")),
+        "status": "Cold",
+    } for p in people if p.get("email")]
+    result = bulk_upsert_contacts(user_id, new_contacts)
+    return {**result, "no_email": [p["name"] for p in people if not p.get("email")]}
+
+
+class ApolloSavedSearchRequest(BaseModel):
+    keywords: str = ""
+    list_id: str = ""
+    page: int = 1
+    per_page: int = 25
+
+
+class ApolloSavedImportRequest(BaseModel):
+    people: Optional[list[dict]] = None
+    all: bool = False
+    keywords: str = ""
+    list_id: str = ""
+
+
+@app.get("/apollo/lists")
+def apollo_lists(user=Depends(get_current_user)):
+    try:
+        return apollo.list_saved_lists()
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/apollo/saved")
+def apollo_saved(req: ApolloSavedSearchRequest, user=Depends(get_current_user)):
+    try:
+        return apollo.search_saved(req.keywords, req.list_id, req.page, req.per_page)
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@app.post("/apollo/saved/import")
+def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_user)):
+    try:
+        people = apollo.all_saved(req.keywords, req.list_id) if req.all else (req.people or [])
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not people:
+        raise HTTPException(status_code=400, detail="No people selected")
+    return _import_apollo_people(user.id, people)
 
 
 # --- Scheduled queue status ---

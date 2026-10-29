@@ -8,6 +8,7 @@ function exitDevMode() {
 }
 import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
+import FindPeople from './pages/FindPeople'
 import Calendar from './pages/Calendar'
 import EmailStudio from './pages/EmailStudio'
 import Settings from './pages/Settings'
@@ -38,6 +39,7 @@ function Layout() {
         {[
           { to: '/', label: 'Dashboard' },
           { to: '/contacts', label: 'Contacts' },
+          { to: '/find', label: 'Find People' },
           { to: '/calendar', label: 'Calendar' },
           { to: '/studio', label: 'Email Studio' },
           { to: '/settings', label: 'Settings' },
@@ -73,6 +75,7 @@ function Layout() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/find" element={<FindPeople />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/studio" element={<EmailStudio />} />
           <Route path="/settings" element={<Settings />} />
