@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { apolloSearch, apolloReveal } from '../api/client'
 import SavedInApollo from '../components/SavedInApollo'
@@ -60,12 +60,15 @@ export default function FindPeople() {
   )
 }
 
-function SearchApollo() {
-  const [firm, setFirm] = useState('')
+export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = null, autoSearch = false }) {
+  const [firm, setFirm] = useState(initialFirm)
   const [name, setName] = useState('')
-  const [titles, setTitles] = useState('')
+  const [titles, setTitles] = useState(initialTitles)
   const [location, setLocation] = useState('')
   const [seniorities, setSeniorities] = useState([])
+
+  // Client side opens this already filled in for a deal's company, so search right away
+  useEffect(() => { if (autoSearch && initialFirm) runSearch(1) }, [])
   const [results, setResults] = useState(null)
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState({})
@@ -105,7 +108,7 @@ function SearchApollo() {
     setRevealing(true)
     setError('')
     try {
-      const res = await apolloReveal(ids)
+      const res = await apolloReveal(ids, dealId)
       setRevealed(r => ({ ...r, ...Object.fromEntries(res.people.map(p => [p.apollo_id, p])) }))
       setSelected({})
       setSummary(res)

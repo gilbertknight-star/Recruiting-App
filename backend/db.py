@@ -59,6 +59,14 @@ DEFAULT_TEMPLATES = [
     },
     # Follow-ups. Sent as replies in the original Gmail thread when there is one, so the subject
     # below is only used when there's no earlier email to reply to.
+    # Client side: someone at a company a bank advised on a recent deal
+    {
+        "tier": "client_referral",
+        "prompt": "Write a cold networking email from Gilbert Knight to {name}, {title} at {firm}. {firm} recently worked with {bank}: {deal} Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nMy name is Gilbert Knight, and I'm a student at the University of Oregon studying Mathematics and Finance and a member of the University of Oregon Investment Group.\n\nOne or two sentences: congratulate them on the deal, and say he's recruiting for investment banking and would love to hear what working with {bank} was like from the company's side, and any advice they have.\n\nAsk whether they'd have 15 minutes for a brief call in the coming weeks.\n\nBest,\nGilbert\n\nKeep it under 120 words. Do not ask for a referral or an introduction. Do not add a subject line.",
+        "subject": "UO student - your work with {bank}",
+        "tone": "respectful and concise",
+        "max_words": 120,
+    },
     {
         "tier": "followup_cold",
         "prompt": "Write a short, polite follow-up email from Gilbert Knight to {name} at {firm}. They haven't replied to his networking email from {days_since} days ago; this is follow-up number {followup_number}. Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nOne or two friendly sentences bumping his earlier note, saying he'd still love to hear about their path and experience at {firm} and would be grateful for even 15 minutes.\n\nBest,\nGilbert\n\nDo not apologize repeatedly, do not guilt-trip, do not mention scheduling flexibility, do not add a subject line, and word it differently from a generic template.",

@@ -9,6 +9,7 @@ current_user_id: ContextVar[str | None] = ContextVar("current_user_id", default=
 
 # Anthropic API list prices, $ per million tokens (input, output)
 CLAUDE_PRICES = {
+    "claude-opus-5-5": (4.00, 20.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
 }
@@ -41,6 +42,9 @@ def log_claude(response, action: str):
             + (getattr(u, "cache_creation_input_tokens", 0) or 0) * in_price * 1.25
             + (getattr(u, "cache_read_input_tokens", 0) or 0) * in_price * 0.1
             + out * out_price) / 1_000_000
+    # Web search is billed per search on top of tokens: $10 per 1,000
+    searches = getattr(getattr(u, "server_tool_use", None), "web_search_requests", 0) or 0
+    cost += searches * 0.01
     _insert({"provider": "claude", "action": action, "model": response.model,
              "input_tokens": inp, "output_tokens": out, "cost_usd": round(cost, 6)})
 

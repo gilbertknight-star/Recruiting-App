@@ -16,6 +16,7 @@ from contacts import (
 import apollo
 import gcal
 import tracker
+import deals
 from email_gen import generate_email, generate_batch, compose_free, apply_font, _plain_text
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
@@ -587,6 +588,7 @@ class ApolloSearchRequest(BaseModel):
 
 class ApolloRevealRequest(BaseModel):
     apollo_ids: list[str]
+    deal_id: Optional[str] = None   # set when finding people for a client-side deal
 
 
 @app.post("/apollo/search")
@@ -608,11 +610,23 @@ def apollo_reveal(req: ApolloRevealRequest, user=Depends(get_current_user)):
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    return {**_import_apollo_people(user.id, revealed), "people": revealed}
+    return {**_import_apollo_people(user.id, revealed, _deal_fields(user.id, req.deal_id)), "people": revealed}
 
 
-def _import_apollo_people(user_id: str, people: list[dict]) -> dict:
-    """Add Apollo people with an email to Contacts, skipping emails already there."""
+def _deal_fields(user_id: str, deal_id: Optional[str]) -> dict:
+    """Contact fields that mark someone as a client-side lead from a specific deal."""
+    if not deal_id:
+        return {}
+    deal = next((d for d in deals.list_deals(user_id) if d["id"] == deal_id), None)
+    if not deal:
+        return {}
+    summary = deal.get("summary") or f"{deal['bank']} advised {deal['company']}"
+    return {"contact_type": "client", "deal_id": deal_id, "deal_bank": deal["bank"], "deal_summary": summary}
+
+
+def _import_apollo_people(user_id: str, people: list[dict], extra: dict = None) -> dict:
+    """Add Apollo people with an email to Contacts, skipping emails already there.
+    extra: fields to set on every new contact (e.g. client-side deal info)."""
     new_contacts = [{
         "user_id": user_id,
         "name": p["name"],
@@ -625,6 +639,7 @@ def _import_apollo_people(user_id: str, people: list[dict]) -> dict:
         "notes": f"Source: Apollo (email {p.get('email_status') or 'unknown'})",
         "tier": detect_tier(p.get("title", "")),
         "status": "Cold",
+        **(extra or {}),
     } for p in people if p.get("email")]
     result = bulk_upsert_contacts(user_id, new_contacts)
     return {**result, "no_email": [p["name"] for p in people if not p.get("email")]}
@@ -708,6 +723,55 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
     if not people:
         raise HTTPException(status_code=400, detail="No people selected")
     return _import_apollo_people(user.id, people)
+
+
+# --- Client side: deals ---
+
+class DealSearchRequest(BaseModel):
+    bank: str
+    days: int = 90
+
+
+class DealUpdate(BaseModel):
+    status: Optional[str] = None
+
+
+@app.post("/deals/search")
+def search_deals(req: DealSearchRequest, user=Depends(get_current_user)):
+    """Research the bank's recent deals with Claude + web search (about $1), save new ones."""
+    bank = req.bank.strip()
+    if not bank:
+        raise HTTPException(status_code=400, detail="Enter a bank")
+    try:
+        found = deals.research_deals(bank, max(7, min(req.days, 365)))
+    except deals.DealSearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    added = deals.save_deals(user.id, bank, found)
+    return {"found": len(found), "added": len(added), "deals": deals.list_deals(user.id, bank)}
+
+
+@app.get("/deals")
+def get_deals(bank: str = "", user=Depends(get_current_user)):
+    return deals.list_deals(user.id, bank)
+
+
+@app.get("/deals/client-titles")
+def deal_client_titles(user=Depends(get_current_user)):
+    return deals.CLIENT_TITLES
+
+
+@app.patch("/deals/{deal_id}")
+def patch_deal(deal_id: str, updates: DealUpdate, user=Depends(get_current_user)):
+    result = deals.update_deal(user.id, deal_id, updates.model_dump(exclude_unset=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    return result
+
+
+@app.delete("/deals/{deal_id}")
+def remove_deal(deal_id: str, user=Depends(get_current_user)):
+    deals.delete_deal(user.id, deal_id)
+    return {"deleted": True}
 
 
 # --- API usage & cost ---

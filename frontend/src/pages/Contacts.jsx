@@ -19,7 +19,7 @@ function formatMeeting(startIso, endIso) {
 
 const STATUSES = ['Cold', 'Contacted', 'Replied', 'Warm', 'Meeting Scheduled', 'Referral']
 
-export default function Contacts() {
+export default function Contacts({ side = 'banker' }) {
   const [contacts, setContacts] = useState([])
   const [selected, setSelected] = useState(() => {
     try { return new Set(JSON.parse(sessionStorage.getItem('contactSelection') || '[]')) }
@@ -232,7 +232,8 @@ export default function Contacts() {
     else setSelected(new Set(filtered.map(c => c.id)))
   }
 
-  const filtered = contacts.filter(c => {
+  const sideContacts = contacts.filter(c => (c.contact_type || 'banker') === side)
+  const filtered = sideContacts.filter(c => {
     if (filterStatus && c.status !== filterStatus) return false
     if (filterTier && c.tier !== filterTier) return false
     if (search) {
@@ -301,7 +302,7 @@ export default function Contacts() {
       )}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1 style={{ fontSize: 20, fontWeight: 600 }}>Contacts <span style={{ color: 'var(--muted)', fontSize: 14, fontWeight: 400 }}>({contacts.length})</span></h1>
+        <h1 style={{ fontSize: 20, fontWeight: 600 }}>{side === 'client' ? 'Client Contacts' : 'Contacts'} <span style={{ color: 'var(--muted)', fontSize: 14, fontWeight: 400 }}>({sideContacts.length})</span></h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={downloadTemplate} style={{ fontSize: 13 }}>
             ↓ Download Template

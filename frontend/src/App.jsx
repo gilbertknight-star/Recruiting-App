@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Routes, Route, NavLink } from 'react-router-dom'
+import { Routes, Route, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth, isDevMode } from './context/AuthContext'
 
 function exitDevMode() {
@@ -9,6 +9,7 @@ function exitDevMode() {
 import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
 import FindPeople from './pages/FindPeople'
+import Deals from './pages/Deals'
 import Calendar from './pages/Calendar'
 import EmailStudio from './pages/EmailStudio'
 import Settings from './pages/Settings'
@@ -20,6 +21,13 @@ function Layout() {
   const adminEmail = import.meta.env.VITE_ADMIN_EMAIL
   const devMode = isDevMode()
   const [testMode, setTestMode] = useState(false)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const side = location.pathname.startsWith('/client') ? 'client' : 'banker'
+
+  function switchSide(next) {
+    if (next !== side) navigate(next === 'client' ? '/client' : '/')
+  }
 
   useEffect(() => {
     import('./api/client.js').then(({ getMe, getSettings }) => {
@@ -52,15 +60,29 @@ function Layout() {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 32, letterSpacing: '-0.3px' }}>
           Ducks In a Row
         </div>
-        {[
+        <div style={{ display: 'flex', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 3, marginBottom: 16 }}>
+          {[['banker', 'Bankers'], ['client', 'Clients']].map(([key, label]) => (
+            <button key={key} className="btn-sm" onClick={() => switchSide(key)} style={{
+              flex: 1, background: side === key ? (key === 'client' ? '#f97316' : 'var(--accent)') : 'transparent',
+              color: side === key ? '#fff' : 'var(--muted)', fontWeight: 600,
+            }}>{label}</button>
+          ))}
+        </div>
+        {(side === 'client' ? [
+          { to: '/client', label: 'Deals' },
+          { to: '/client/contacts', label: 'Client Contacts' },
+          { to: '/calendar', label: 'Calendar' },
+          { to: '/studio', label: 'Email Studio' },
+          { to: '/settings', label: 'Settings' },
+        ] : [
           { to: '/', label: 'Dashboard' },
           { to: '/contacts', label: 'Contacts' },
           { to: '/find', label: 'Find People' },
           { to: '/calendar', label: 'Calendar' },
           { to: '/studio', label: 'Email Studio' },
           { to: '/settings', label: 'Settings' },
-        ].map(({ to, label }) => (
-          <NavLink key={to} to={to} end={to === '/'} style={({ isActive }) => ({
+        ]).map(({ to, label }) => (
+          <NavLink key={to} to={to} end={to === '/' || to === '/client'} style={({ isActive }) => ({
             ...navLink,
             background: isActive ? 'var(--surface2)' : 'transparent',
             color: isActive ? 'var(--text)' : 'var(--muted)',
@@ -106,6 +128,8 @@ function Layout() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/find" element={<FindPeople />} />
+          <Route path="/client" element={<Deals />} />
+          <Route path="/client/contacts" element={<Contacts side="client" />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/studio" element={<EmailStudio />} />
           <Route path="/settings" element={<Settings />} />

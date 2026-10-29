@@ -33,6 +33,8 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
         notes_line=notes_line,
         availability_line=availability_line,
         location_line=location_line,
+        bank=contact.get("deal_bank") or "",
+        deal=contact.get("deal_summary") or "",
     ))
 
 
@@ -104,6 +106,8 @@ def append_signature(body: str, settings: dict) -> str:
 def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
     alumni = contact.get("alumni")
     tier = alumni if alumni and alumni in templates else contact.get("tier", "analyst_associate")
+    if contact.get("contact_type") == "client" and "client_referral" in templates:
+        tier = "client_referral"  # client-side leads get the deal-based email
     template = templates.get(tier, templates.get("analyst_associate", {}))
     if not template:
         raise Exception("No template found for tier")
@@ -115,7 +119,9 @@ def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
     )
     log_claude(message, "draft email")
     body = append_signature(with_availability_placeholder(message.content[0].text.strip(), settings), settings)
-    return {"subject": template["subject"], "body": body}
+    # Subjects can use {bank} / {firm} too (the client referral template does)
+    subject = template["subject"].format_map(_Blank(bank=contact.get("deal_bank") or "", firm=contact.get("firm", "")))
+    return {"subject": subject, "body": body}
 
 
 def with_availability_placeholder(text: str, settings: dict) -> str:
