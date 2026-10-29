@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import datetime, date, timedelta
 from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Depends, Query
@@ -65,7 +66,12 @@ def _start_scheduler():
         service_factory=get_gmail_service, send_fn=send_email, prepare_fn=_prepare_scheduled,
         on_sent_fn=_scheduled_sent, on_failed_fn=_scheduled_failed,
     )
-    scheduler.start()
+    # Only one machine should send scheduled emails: the always-on server. Set RUN_SCHEDULER=false
+    # on any other copy of the backend (e.g. the laptop) so it never sends them too.
+    if os.getenv("RUN_SCHEDULER", "true").lower() == "true":
+        scheduler.start()
+    else:
+        print("[scheduler] RUN_SCHEDULER=false: not sending scheduled emails from this machine")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
@@ -119,11 +125,16 @@ class NewContact(BaseModel):
     location: Optional[str] = ""
     notes: Optional[str] = ""
     tier: Optional[str] = None
+    is_practice: Optional[bool] = False
 
 
 @app.post("/contacts")
 def add_contact(contact: NewContact, user=Depends(get_current_user)):
-    return create_contact(user.id, contact.model_dump())
+    data = contact.model_dump()
+    # Adding yourself makes a practice contact: sends and tracking work, but nothing counts
+    if (data.get("email") or "").strip().lower() == (user.email or "").lower():
+        data["is_practice"] = True
+    return create_contact(user.id, data)
 
 
 @app.post("/contacts/upload")
@@ -144,6 +155,7 @@ class ContactUpdate(BaseModel):
     location: Optional[str] = None
     followup_email: Optional[str] = None
     followup_subject: Optional[str] = None
+    is_practice: Optional[bool] = None
     status: Optional[str] = None
     tier: Optional[str] = None
     alumni: Optional[str] = None
@@ -282,8 +294,49 @@ def _redirect_for_test(email: dict, user_email: str) -> dict:
     }
 
 
+_FIRM_SUFFIXES = re.compile(
+    r"\b(inc|llc|lp|llp|ltd|plc|co|corp|corporation|company|group|holdings|securities|partners|& co)\b\.?", re.IGNORECASE)
+
+
+def _firm_key(firm: str) -> str:
+    """'Jefferies LLC', 'Jefferies & Co.' and 'jefferies' all count as the same firm."""
+    key = _FIRM_SUFFIXES.sub("", (firm or "").lower())
+    return re.sub(r"[^a-z0-9]+", " ", key).strip()
+
+
+def _next_weekday(d: date) -> date:
+    d += timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def _firm_day_counts(user_id: str, contacts: list[dict], tz_name: str) -> dict:
+    """How many emails each firm already has on each day: sent (from contacts) plus still-scheduled ones."""
+    import pytz
+    tz = pytz.timezone(tz_name)
+    counts: dict = {}
+
+    def add(firm, when):
+        if not firm or not when:
+            return
+        dt = datetime.fromisoformat(str(when).replace("Z", "+00:00"))
+        dt = dt if dt.tzinfo else pytz.utc.localize(dt)
+        k = (_firm_key(firm), dt.astimezone(tz).date())
+        counts[k] = counts.get(k, 0) + 1
+
+    for c in contacts:
+        if not c.get("is_practice"):
+            add(c.get("firm"), c.get("sent_at"))
+    for item in scheduler.get_scheduled(user_id):
+        if not item.get("test"):
+            add(next((c.get("firm") for c in contacts if c["id"] == item.get("contact_id")), ""), item["send_at"])
+    return counts
+
+
 @app.post("/send")
 def send_emails(req: SendRequest, user=Depends(get_current_user)):
+    import pytz
     settings = get_settings(user.id)
     stats = get_stats(user.id)
     daily_cap = settings.get("daily_cap", 50)
@@ -295,69 +348,87 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
 
     all_contacts = {c["id"]: c for c in get_all_contacts(user.id)}
     now = datetime.utcnow()
-    results = []
+    my_tz = settings.get("avail_timezone") or "America/Los_Angeles"
+    today = datetime.now(pytz.timezone(my_tz)).date()
+    firm_limit = settings.get("firm_daily_limit")
+    firm_limit = 3 if firm_limit is None else firm_limit  # 0 turns the safeguard off
 
-    print(f"[send] attachments in settings: {settings.get('attachments')}")
-    # --- Scheduled send: enqueue and return immediately ---
-    if req.schedule_date and req.schedule_time:
-        for cid in req.contact_ids:
-            c = all_contacts.get(cid)
-            if not c or not c.get("generated_email") or c.get("tier") == "md_partner":
-                continue
-            tz_id = location_to_timezone(c.get("location", ""))
-            send_at = local_to_utc(req.schedule_date, req.schedule_time, tz_id)
-            if send_at <= now:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Scheduled time {req.schedule_time} on {req.schedule_date} is already in the past ({tz_id}). Pick a future time or date."
-                )
-            email = {
-                "id": cid,
-                "user_id": user.id,
-                "to": c["email"],
-                "subject": c.get("generated_subject", ""),
-                "body": c["generated_email"],  # availability is filled in by the scheduler at send time
-                "firm": c.get("firm", ""),
-                "location": c.get("location", ""),
-                "attachment_paths": [p for p in settings.get("attachments", []) if p],
-                "bcc": (settings.get("bcc_email") or "").strip() or None,
-            }
-            scheduler.enqueue(_redirect_for_test(email, user.email) if test_mode else email, send_at)
-            if not test_mode:
-                update_contact(user.id, cid, {
-                    "status": "Contacted",
-                    "sent_at": send_at.isoformat(),
-                    "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
-                })
-                increment_sent(user.id)
-            results.append({"id": cid, "success": True, "scheduled": True, "send_at": send_at.isoformat(), "test": test_mode})
-        return results
+    chosen = [all_contacts[cid] for cid in req.contact_ids
+              if cid in all_contacts and all_contacts[cid].get("generated_email") and all_contacts[cid].get("tier") != "md_partner"]
 
-    # --- Immediate send ---
-    emails_to_send = []
-    for cid in req.contact_ids:
-        c = all_contacts.get(cid)
-        if not c or not c.get("generated_email") or c.get("tier") == "md_partner":
-            continue
-        scheduled_time = None
-        if req.scheduled_time:
-            scheduled_time = datetime.fromisoformat(req.scheduled_time)
+    # --- Plan: which day each email goes out, so no firm gets more than firm_limit a day ---
+    first_day = date.fromisoformat(req.schedule_date) if (req.schedule_date and req.schedule_time) else today
+    counts = _firm_day_counts(user.id, list(all_contacts.values()), my_tz) if firm_limit else {}
+    plan = []  # (contact, day, position among this batch's emails to that firm that day)
+    batch: dict = {}
+    for c in chosen:
+        day = first_day
+        key = _firm_key(c.get("firm"))
+        if firm_limit and not c.get("is_practice"):
+            while counts.get((key, day), 0) >= firm_limit:
+                day = _next_weekday(day)
+            counts[(key, day)] = counts.get((key, day), 0) + 1
+        # Only emails from this batch are spaced out; a single email keeps the exact time you picked,
+        # even if that firm already got email earlier in the day
+        batch[(key, day)] = batch.get((key, day), 0) + 1
+        plan.append((c, day, batch[(key, day)]))
+
+    def build(c, body):
         email = {
-            "id": cid,
+            "id": c["id"],
             "user_id": user.id,
             "to": c["email"],
             "subject": c.get("generated_subject", ""),
-            "body": apply_font(gcal.fill_availability(c["generated_email"], user.id, settings, location_to_timezone(c.get("location", ""))), settings),
+            "body": body,
             "firm": c.get("firm", ""),
+            "location": c.get("location", ""),
             "attachment_paths": [p for p in settings.get("attachments", []) if p],
             "bcc": (settings.get("bcc_email") or "").strip() or None,
-            "scheduled_time": scheduled_time,
-            "location": c.get("location", ""),
         }
-        emails_to_send.append(_redirect_for_test(email, user.email) if test_mode else email)
+        return _redirect_for_test(email, user.email) if test_mode else email
 
+    results = []
+    send_now = []
+    for c, day, position in plan:
+        moved = day != first_day
+        if not moved and first_day == today and not (req.schedule_date and req.schedule_time):
+            send_now.append(c)
+            continue
+        # Scheduled: the chosen time, or 9:00am for emails pushed to a later day; same-firm emails
+        # on one day go out 20 minutes apart instead of all at once
+        tz_id = location_to_timezone(c.get("location", ""))
+        base_time = req.schedule_time if (req.schedule_time and not moved) else "09:00"
+        send_at = local_to_utc(day.isoformat(), base_time, tz_id) + timedelta(minutes=20 * (position - 1))
+        if send_at <= now and not moved:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Scheduled time {req.schedule_time} on {req.schedule_date} is already in the past ({tz_id}). Pick a future time or date."
+            )
+        # Availability is filled in by the scheduler at send time
+        scheduler.enqueue(build(c, c["generated_email"]), send_at)
+        if not test_mode:
+            update_contact(user.id, c["id"], {
+                "status": "Contacted",
+                "sent_at": send_at.isoformat(),
+                "follow_up_due": (send_at.date() + timedelta(days=7)).isoformat(),
+            })
+            if not c.get("is_practice"):
+                increment_sent(user.id)
+        results.append({"id": c["id"], "success": True, "scheduled": True, "spread": moved,
+                        "send_at": send_at.isoformat(), "firm": c.get("firm", ""), "test": test_mode})
+
+    if not send_now:
+        return results
+
+    # --- Immediate send ---
+    emails_to_send = [
+        {**build(c, apply_font(gcal.fill_availability(c["generated_email"], user.id, settings,
+                                                      location_to_timezone(c.get("location", ""))), settings)),
+         "scheduled_time": datetime.fromisoformat(req.scheduled_time) if req.scheduled_time else None}
+        for c in send_now
+    ]
     service = get_gmail_service(user.id)
-    results = rate_limited_send(
+    sent = rate_limited_send(
         service, emails_to_send,
         per_minute=settings.get("emails_per_minute", 10),
         daily_cap=daily_cap,
@@ -365,9 +436,9 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
     )
 
     if test_mode:
-        return [{**r, "test": True} for r in results]
+        return results + [{**r, "test": True} for r in sent]
 
-    for r in results:
+    for r in sent:
         if r["success"]:
             update_contact(user.id, r["id"], {
                 "status": "Contacted",
@@ -375,9 +446,10 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
                 "gmail_thread_id": r.get("thread_id"),
                 "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
             })
-            increment_sent(user.id)
+            if not all_contacts.get(r["id"], {}).get("is_practice"):
+                increment_sent(user.id)
 
-    return results
+    return results + sent
 
 
 # --- Follow-ups ---
@@ -450,7 +522,8 @@ def send_followups(req: FollowupRequest, user=Depends(get_current_user)):
                     "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
                     "gmail_thread_id": c.get("gmail_thread_id") or sent.get("thread_id"),
                 })
-                increment_sent(user.id)
+                if not c.get("is_practice"):
+                    increment_sent(user.id)
             results.append({"id": cid, "success": True, "threaded": bool(reply_to), "test": test_mode})
         except Exception as e:
             results.append({"id": cid, "success": False, "error": str(e)})
@@ -556,6 +629,31 @@ def import_from_recruiting(user=Depends(get_current_user)):
 
 
 # --- File browser ---
+
+@app.post("/attachments")
+async def upload_attachment(file: UploadFile = File(...), user=Depends(get_current_user)):
+    """Upload a file (e.g. your resume) to storage and attach it to every email."""
+    import attachments
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Attachments must be under 10 MB")
+    ref = attachments.upload(user.id, file.filename or "attachment", data)
+    current = [a for a in (get_settings(user.id).get("attachments") or []) if a]
+    update_settings(user.id, {"attachments": current + [ref]})
+    return {"ref": ref, "name": attachments.display_name(ref), "attachments": current + [ref]}
+
+
+@app.delete("/attachments")
+def remove_attachment(ref: str, user=Depends(get_current_user)):
+    import attachments
+    current = [a for a in (get_settings(user.id).get("attachments") or []) if a and a != ref]
+    update_settings(user.id, {"attachments": current})
+    try:
+        attachments.delete(ref)
+    except Exception as e:
+        print(f"[attachments] couldn't delete {ref}: {e}")
+    return {"attachments": current}
+
 
 @app.get("/browse-file")
 def browse_file(user=Depends(get_current_user)):
@@ -898,7 +996,7 @@ def reveal_contacts(req: RevealContactsRequest, user=Depends(get_current_user)):
 def deals_overview(user=Depends(get_current_user)):
     """Client dashboard: each bank's deals with how far outreach has gone on each."""
     all_deals = deals.list_deals(user.id)
-    clients = [c for c in get_all_contacts(user.id) if c.get("contact_type") == "client"]
+    clients = [c for c in get_all_contacts(user.id) if c.get("contact_type") == "client" and not c.get("is_practice")]
     by_deal: dict = {}
     for c in clients:
         by_deal.setdefault(c.get("deal_id"), []).append(c)
@@ -1111,6 +1209,7 @@ class SettingsUpdate(BaseModel):
     email_font_size: Optional[int] = None
     calendar_ids: Optional[list[str]] = None
     apollo_cost_per_credit: Optional[float] = None
+    firm_daily_limit: Optional[int] = None
 
 
 @app.get("/settings")

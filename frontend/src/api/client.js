@@ -86,4 +86,10 @@ export const cancelScheduled = (id) => api.delete(`/scheduled/${id}`).then(r => 
 export const cancelAllScheduled = () => api.post('/scheduled/cancel-all').then(r => r.data)
 export const getScheduled =() => api.get('/scheduled').then(r => r.data)
 export const browseFile = () => api.get('/browse-file').then(r => r.data)
+export const uploadAttachment = (file) => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post('/attachments', form).then(r => r.data)
+}
+export const removeAttachment = (ref) => api.delete('/attachments', { params: { ref } }).then(r => r.data)
 export const sendTestEmail = (subject, body) => api.post('/send-test', { subject, body }).then(r => r.data)

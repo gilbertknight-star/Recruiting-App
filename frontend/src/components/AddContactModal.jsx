@@ -116,6 +116,12 @@ export default function AddContactModal({ onClose, onSaved, editContact }) {
               {LEVELS.map(l => <option key={l} value={l}>{l || 'Not specified'}</option>)}
             </select>
           </Field>
+          <Field label="Practice contact">
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+              <input type="checkbox" style={{ width: 'auto' }} checked={!!form.is_practice} onChange={e => set('is_practice', e.target.checked)} />
+              For testing: sends and tracks normally, but never counts toward stats or limits
+            </label>
+          </Field>
           <Field label="Tier">
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <select value={form.tier} onChange={e => { set('tier', e.target.value); setTierOverride(true) }} style={{ flex: 1 }}>

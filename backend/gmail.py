@@ -154,16 +154,13 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
     alt.attach(MIMEText(html_body, "html"))
     msg.attach(alt)
 
-    for path in (attachment_paths or []):
-        p = Path(path)
-        print(f"[attach] path={path!r} exists={p.exists()} resolved={p.resolve()}")
-        if not p.exists():
-            raise FileNotFoundError(f"Attachment not found: {path}")
-        with open(p, "rb") as f:
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(f.read())
+    import attachments
+    for ref in (attachment_paths or []):
+        filename, data = attachments.load(ref)
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(data)
         encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="{p.name}"')
+        part.add_header("Content-Disposition", f'attachment; filename="{filename}"')
         msg.attach(part)
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()

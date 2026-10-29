@@ -109,7 +109,8 @@ def update_template(user_id: str, tier: str, updates: dict) -> dict | None:
 
 
 def get_stats(user_id: str) -> dict:
-    contacts = get_all_contacts(user_id)
+    # Practice contacts (you, emailing yourself) never count toward pipeline stats
+    contacts = [c for c in get_all_contacts(user_id) if not c.get("is_practice")]
     settings = get_settings(user_id)
     today = date.today().isoformat()
 

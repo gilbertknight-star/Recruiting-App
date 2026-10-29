@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile, getAvailabilityPreview, getCalendarList } from '../api/client'
+import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, uploadAttachment, removeAttachment, getAvailabilityPreview, getCalendarList } from '../api/client'
 import RichTextEditor, { plainToHtml } from '../components/RichTextEditor'
 
 export default function Settings() {
@@ -7,6 +7,7 @@ export default function Settings() {
   const [gmailConnected, setGmailConnected] = useState(false)
   const [saved, setSaved] = useState(false)
   const [preview, setPreview] = useState('')
+  const [uploading, setUploading] = useState(false)
   const [calendars, setCalendars] = useState(null)
   const [calendarError, setCalendarError] = useState('')
 
@@ -120,6 +121,20 @@ export default function Settings() {
                 Your plan's price divided by its credits. Used to show Apollo spend in dollars on the Dashboard.
               </p>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={lbl}>Most emails to one firm per day</label>
+              <select
+                value={settings.firm_daily_limit ?? 3}
+                onChange={e => set('firm_daily_limit', Number(e.target.value))}
+                style={{ width: 140 }}
+              >
+                {[1, 2, 3, 4, 5, 8, 10].map(n => <option key={n} value={n}>{n} per day</option>)}
+                <option value={0}>No limit</option>
+              </select>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                If you send more than this to one firm, the extras are scheduled for the next weekdays at 9am their time, 20 minutes apart, so a bank never gets a burst of emails from you.
+              </p>
+            </div>
           </div>
 
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -228,39 +243,52 @@ export default function Settings() {
             </div>
             <div>
               <label style={lbl}>Attachments (sent with every email)</label>
-              {(settings.attachments || []).filter(Boolean).map((path, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
-                  <div style={{
-                    flex: 1, padding: '7px 10px', borderRadius: 'var(--radius)',
-                    border: '1px solid var(--border)', background: 'var(--surface2)',
-                    fontSize: 12, color: 'var(--text)', overflow: 'hidden',
-                    textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    title: path,
-                  }}>
-                    {path.split(/[\\/]/).pop()}
-                    <span style={{ color: 'var(--muted)', marginLeft: 6, fontSize: 11 }}>
-                      {path.substring(0, path.lastIndexOf('\\') + 1) || path.substring(0, path.lastIndexOf('/') + 1)}
-                    </span>
+              {(settings.attachments || []).filter(Boolean).map(ref => {
+                const local = !ref.startsWith('storage://')
+                const name = local ? ref.split(/[\\/]/).pop() : ref.split('/').pop().replace(/^[0-9a-f]{8}-/, '')
+                return (
+                  <div key={ref} style={{ display: 'flex', gap: 8, marginBottom: 6, alignItems: 'center' }}>
+                    <div title={ref} style={{
+                      flex: 1, padding: '7px 10px', borderRadius: 'var(--radius)',
+                      border: `1px solid ${local ? 'var(--yellow)' : 'var(--border)'}`, background: 'var(--surface2)',
+                      fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {name}
+                      <span style={{ color: local ? 'var(--yellow)' : 'var(--green)', marginLeft: 6, fontSize: 11 }}>
+                        {local ? 'only on your laptop: re-upload so the server can send it' : 'uploaded'}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const r = await removeAttachment(ref)
+                        set('attachments', r.attachments)
+                      }}
+                      style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', padding: '0 10px', cursor: 'pointer', flexShrink: 0, fontSize: 16, lineHeight: '32px' }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
+                      onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                    >✕</button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => set('attachments', (settings.attachments || []).filter((_, j) => j !== i))}
-                    style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--muted)', padding: '0 10px', cursor: 'pointer', flexShrink: 0, fontSize: 16, lineHeight: '32px' }}
-                    onMouseEnter={e => { e.currentTarget.style.color = '#f87171'; e.currentTarget.style.borderColor = '#f87171' }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-                  >✕</button>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="btn-secondary btn-sm"
-                onClick={async () => {
-                  const r = await browseFile()
-                  if (r.path) set('attachments', [...(settings.attachments || []).filter(Boolean), r.path])
-                }}
-                style={{ marginTop: 4 }}
-              >+ Browse for File</button>
-              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>Opens file explorer. Selected files are attached to every outgoing email.</p>
+                )
+              })}
+              <label className="btn-secondary btn-sm" style={{ display: 'inline-block', marginTop: 4, cursor: 'pointer' }}>
+                {uploading ? 'Uploading…' : '+ Upload file'}
+                <input type="file" accept=".pdf,.docx,.doc" style={{ display: 'none' }} disabled={uploading} onChange={async e => {
+                  const file = e.target.files?.[0]
+                  e.target.value = ''
+                  if (!file) return
+                  setUploading(true)
+                  try {
+                    const r = await uploadAttachment(file)
+                    set('attachments', r.attachments)
+                  } catch (err) {
+                    alert(err.response?.data?.detail || 'Upload failed')
+                  } finally {
+                    setUploading(false)
+                  }
+                }} />
+              </label>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>Files are uploaded to your account's storage, so emails include them even when your laptop is off. Changes save right away.</p>
             </div>
           </div>
 

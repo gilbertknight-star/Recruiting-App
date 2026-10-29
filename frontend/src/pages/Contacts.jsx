@@ -160,12 +160,20 @@ export default function Contacts({ side = 'banker' }) {
         ? { schedule_date: scheduleDate, schedule_time: scheduleTime }
         : {}
       const results = await sendEmails(sendable, options)
-      const scheduled = results.filter(r => r.scheduled).length
+      const spread = results.filter(r => r.spread)
+      const scheduled = results.filter(r => r.scheduled && !r.spread).length
       const sentNow = results.filter(r => r.success && !r.scheduled).length
+      // Emails held back by the per-firm daily limit, summarized by firm and day
+      const spreadNote = spread.length ? ` · ${spread.length} moved to later days to keep each firm under its daily limit (` +
+        Object.entries(spread.reduce((acc, r) => {
+          const day = new Date(r.send_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+          const k = r.firm || 'Unknown firm'
+          acc[k] = acc[k] ? acc[k] : new Set(); acc[k].add(day); return acc
+        }, {})).map(([firm, days]) => `${firm}: ${[...days].join(', ')}`).join('; ') + ')' : ''
       if (scheduleDate) {
-        setMsg(`Scheduled ${scheduled} email${scheduled !== 1 ? 's' : ''} for ${scheduleTime} recipient local time${sentNow ? ` · ${sentNow} sent immediately (past time)` : ''}`)
+        setMsg(`Scheduled ${scheduled} email${scheduled !== 1 ? 's' : ''} for ${scheduleTime} recipient local time${spreadNote}`)
       } else {
-        setMsg(`Sent ${sentNow} / ${sendable.length}`)
+        setMsg(`Sent ${sentNow} / ${sendable.length}${spreadNote}`)
       }
       loadContacts()
     } catch (err) {
@@ -436,7 +444,11 @@ export default function Contacts({ side = 'banker' }) {
               <tr key={c.id}>
                 <td style={{ textAlign: 'center' }}><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} style={{ cursor: 'pointer' }} /></td>
                 <td>
-                  <div style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditContact(c)}>{c.name}</div>
+                  <div style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditContact(c)}>
+                    {c.name}
+                    {c.is_practice && <span className="badge" title="Practice contact: doesn't count toward stats or limits"
+                      style={{ marginLeft: 6, background: 'rgba(234,179,8,0.15)', color: 'var(--yellow)' }}>Practice</span>}
+                  </div>
                   <div style={{ color: c.email ? 'var(--muted)' : 'var(--yellow)', fontSize: 12 }}>{c.email || 'No email yet'}</div>
                 </td>
                 <td>
