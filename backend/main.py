@@ -14,6 +14,7 @@ from contacts import (
     get_templates, update_template, get_stats, increment_sent, detect_tier,
 )
 import apollo
+import gcal
 from email_gen import generate_email, generate_batch, compose_free
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
@@ -25,9 +26,16 @@ import scheduler
 
 app = FastAPI(title="Ducks In a Row API")
 
+
+def _prepare_scheduled(email: dict) -> dict:
+    """Runs just before a scheduled email sends, so its availability reflects the calendar at that moment."""
+    user_id = email.get("user_id", "")
+    tz_id = location_to_timezone(email.get("location", ""))
+    return {**email, "body": gcal.fill_availability(email["body"], user_id, get_settings(user_id), tz_id)}
+
 @app.on_event("startup")
 def _start_scheduler():
-    scheduler.configure(service_factory=get_gmail_service, send_fn=send_email)
+    scheduler.configure(service_factory=get_gmail_service, send_fn=send_email, prepare_fn=_prepare_scheduled)
     scheduler.start()
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
@@ -111,9 +119,20 @@ class ContactUpdate(BaseModel):
 
 @app.patch("/contacts/{contact_id}")
 def patch_contact(contact_id: str, updates: ContactUpdate, user=Depends(get_current_user)):
-    result = update_contact(user.id, contact_id, updates.model_dump(exclude_none=True))
+    # exclude_unset (not exclude_none) so an explicit null clears a field, e.g. removing a meeting
+    changes = updates.model_dump(exclude_unset=True)
+    result = update_contact(user.id, contact_id, changes)
     if not result:
         raise HTTPException(status_code=404, detail="Contact not found")
+    if "meeting_at" in changes or "meeting_end" in changes:
+        try:
+            event_id = gcal.sync_meeting(user.id, result)
+            if event_id != result.get("google_event_id"):
+                result = update_contact(user.id, contact_id, {"google_event_id": event_id}) or result
+        except Exception as e:
+            # The meeting is saved either way; the calendar copy just didn't sync
+            print(f"[calendar] meeting sync failed: {e}")
+            result = {**result, "calendar_error": str(e)}
     return result
 
 
@@ -187,13 +206,13 @@ def generate_batch_custom_endpoint(req: CustomBatchRequest, user=Depends(get_cur
             if contact.get("notes"):
                 context_parts.append(f"Notes: {contact['notes']}")
             avail = settings.get("availability", "").strip()
-            if avail:
+            if avail and not settings.get("live_availability"):
                 context_parts.append(f"My availability: {avail}")
             context = "\n".join(context_parts)
 
             result = compose_free(personalized_prompt, context)
-            from email_gen import append_signature
-            body = append_signature(result["body"], settings)
+            from email_gen import append_signature, with_availability_placeholder
+            body = append_signature(with_availability_placeholder(result["body"], settings), settings)
             update_contact(user.id, contact["id"], {"generated_email": body})
             results.append({"id": contact["id"], "success": True})
         except Exception as e:
@@ -257,8 +276,9 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
                 "user_id": user.id,
                 "to": c["email"],
                 "subject": c.get("generated_subject", ""),
-                "body": c["generated_email"],
+                "body": c["generated_email"],  # availability is filled in by the scheduler at send time
                 "firm": c.get("firm", ""),
+                "location": c.get("location", ""),
                 "attachment_paths": [p for p in settings.get("attachments", []) if p],
                 "bcc": (settings.get("bcc_email") or "").strip() or None,
             }
@@ -286,7 +306,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "id": cid,
             "to": c["email"],
             "subject": c.get("generated_subject", ""),
-            "body": c["generated_email"],
+            "body": gcal.fill_availability(c["generated_email"], user.id, settings, location_to_timezone(c.get("location", ""))),
             "firm": c.get("firm", ""),
             "attachment_paths": [p for p in settings.get("attachments", []) if p],
             "bcc": (settings.get("bcc_email") or "").strip() or None,
@@ -335,7 +355,7 @@ def send_test_email(req: TestSendRequest, user=Depends(get_current_user)):
         service=service,
         to=recipient,
         subject=f"[TEST] {req.subject}",
-        body=req.body,
+        body=gcal.fill_availability(req.body, user.id, settings, settings.get("avail_timezone") or "America/Los_Angeles"),
         firm="",
         attachment_paths=[p for p in settings.get("attachments", []) if p],
     )
@@ -534,6 +554,25 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
     return _import_apollo_people(user.id, people)
 
 
+# --- Google Calendar ---
+
+@app.get("/calendar/events")
+def calendar_events(start: str, end: str, user=Depends(get_current_user)):
+    """Events from the user's Google Calendar between two ISO dates (UTC)."""
+    try:
+        return gcal.list_events(user.id, datetime.fromisoformat(start[:19]), datetime.fromisoformat(end[:19]))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Couldn't read Google Calendar: {e}")
+
+
+@app.get("/calendar/availability-preview")
+def availability_preview(location: str = "", user=Depends(get_current_user)):
+    """The availability text an email to someone in `location` would get right now."""
+    settings = get_settings(user.id)
+    text = gcal.fill_availability(gcal.AVAILABILITY_TOKEN, user.id, settings, location_to_timezone(location))
+    return {"text": text}
+
+
 # --- Scheduled queue status ---
 
 @app.get("/scheduled")
@@ -559,6 +598,13 @@ class SettingsUpdate(BaseModel):
     attachments: Optional[list[str]] = None
     bcc_email: Optional[str] = None
     test_mode: Optional[bool] = None
+    live_availability: Optional[bool] = None
+    avail_timezone: Optional[str] = None
+    avail_start_hour: Optional[int] = None
+    avail_end_hour: Optional[int] = None
+    avail_days_ahead: Optional[int] = None
+    avail_min_minutes: Optional[int] = None
+    avail_max_days: Optional[int] = None
 
 
 @app.get("/settings")

@@ -13,12 +13,14 @@ _callbacks: list = []      # registered send functions [(fn, user_id)]
 
 _service_factory = None    # set by main.py on startup: fn(user_id) -> gmail service
 _send_fn = None            # set by main.py: fn(service, **kwargs) -> dict
+_prepare_fn = None         # set by main.py: fn(email) -> email, run just before sending
 
 
-def configure(service_factory, send_fn):
-    global _service_factory, _send_fn
+def configure(service_factory, send_fn, prepare_fn=None):
+    global _service_factory, _send_fn, _prepare_fn
     _service_factory = service_factory
     _send_fn = send_fn
+    _prepare_fn = prepare_fn
 
 
 def enqueue(email: dict, send_at: datetime):
@@ -51,6 +53,8 @@ def _tick():
 
     for email in due:
         try:
+            if _prepare_fn:
+                email = _prepare_fn(email)
             service = _service_factory(email.get("user_id", ""))
             to = dev_redirect if dev_mode else email["to"]
             subject = f"[SCHEDULED DEV → {email['to']}] {email['subject']}" if dev_mode else email["subject"]

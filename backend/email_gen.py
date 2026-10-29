@@ -12,6 +12,8 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
 
     availability = settings.get("availability", "").strip()
     availability_line = f"I am generally available {availability}." if availability else ""
+    if settings.get("live_availability"):
+        availability_line = ""  # live times are added as their own paragraph and filled in at send time
 
     school = contact.get("school", "").strip()
     school_line = f"I am a student at {school}." if school else ""
@@ -67,8 +69,16 @@ def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
         max_tokens=400,
         messages=[{"role": "user", "content": prompt}],
     )
-    body = append_signature(message.content[0].text.strip(), settings)
+    body = append_signature(with_availability_placeholder(message.content[0].text.strip(), settings), settings)
     return {"subject": template["subject"], "body": body}
+
+
+def with_availability_placeholder(text: str, settings: dict) -> str:
+    """Add the live-availability placeholder paragraph; it's replaced with calendar times when the email sends."""
+    if not settings.get("live_availability"):
+        return text
+    from gcal import AVAILABILITY_TOKEN
+    return f"{text}\n\n{AVAILABILITY_TOKEN}"
 
 
 def compose_free(prompt: str, context: str) -> dict:

@@ -21,6 +21,8 @@ SCOPES = [
     "https://www.googleapis.com/auth/gmail.send",
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.labels",
+    "https://www.googleapis.com/auth/calendar.events",
+    "https://www.googleapis.com/auth/calendar.freebusy",
 ]
 
 CREDS_FILE = Path(__file__).parent / "credentials.json"
@@ -48,26 +50,32 @@ def exchange_code(code: str, user_id: str):
 
 DEV_TOKEN_FILE = Path(__file__).parent / "dev_token.json"
 
-def get_gmail_service(user_id: str):
+def get_google_credentials(user_id: str) -> Credentials:
+    """The user's Google OAuth credentials (Gmail + Calendar), refreshed if expired."""
     if DEV_MODE:
         if not DEV_TOKEN_FILE.exists():
             raise Exception("Dev Gmail token not found. Run setup_dev_gmail.py to authorize.")
         token_data = json.loads(DEV_TOKEN_FILE.read_text())
-        creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+        creds = Credentials.from_authorized_user_info(token_data)
         if creds.expired and creds.refresh_token:
             creds.refresh(Request())
             DEV_TOKEN_FILE.write_text(creds.to_json())
-        return build("gmail", "v1", credentials=creds)
+        return creds
 
     res = supabase.table("gmail_tokens").select("token_json").eq("user_id", user_id).execute()
     if not res.data:
         raise Exception("Gmail not connected. Please authorize Gmail in Settings.")
     token_data = json.loads(res.data[0]["token_json"])
-    creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+    # No scopes passed: refresh with whatever the user granted, so older Gmail-only tokens keep working
+    creds = Credentials.from_authorized_user_info(token_data)
     if creds.expired and creds.refresh_token:
         creds.refresh(Request())
         supabase.table("gmail_tokens").update({"token_json": creds.to_json(), "updated_at": datetime.utcnow().isoformat()}).eq("user_id", user_id).execute()
-    return build("gmail", "v1", credentials=creds)
+    return creds
+
+
+def get_gmail_service(user_id: str):
+    return build("gmail", "v1", credentials=get_google_credentials(user_id))
 
 
 def is_gmail_connected(user_id: str) -> bool:

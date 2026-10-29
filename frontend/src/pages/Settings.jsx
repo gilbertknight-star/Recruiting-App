@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile } from '../api/client'
+import { getSettings, updateSettings, getGmailAuthUrl, getGmailStatus, browseFile, getAvailabilityPreview } from '../api/client'
 import RichTextEditor, { plainToHtml } from '../components/RichTextEditor'
 
 export default function Settings() {
   const [settings, setSettings] = useState(null)
   const [gmailConnected, setGmailConnected] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [preview, setPreview] = useState('')
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => setSettings({}))
@@ -30,6 +31,16 @@ export default function Settings() {
   }
 
   function set(key, val) { setSettings(s => ({ ...s, [key]: val })) }
+
+  async function handlePreview() {
+    await updateSettings(settings)  // preview uses the saved hours, so save first
+    try {
+      const { text } = await getAvailabilityPreview('New York')
+      setPreview(text || 'No open times found in your calling hours.')
+    } catch (e) {
+      setPreview(e.response?.data?.detail || 'Could not reach Google Calendar. Reconnect Gmail above.')
+    }
+  }
 
   if (!settings) return <p style={{ color: 'var(--muted)' }}>Loading…</p>
 
@@ -80,8 +91,64 @@ export default function Settings() {
               <label style={lbl}>Your School</label>
               <input value={settings.sender_school || ''} onChange={e => set('sender_school', e.target.value)} />
             </div>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                <input
+                  type="checkbox"
+                  style={{ width: 'auto' }}
+                  checked={!!settings.live_availability}
+                  onChange={e => set('live_availability', e.target.checked)}
+                />
+                Live availability from Google Calendar
+              </label>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
+                Emails list your open times, checked against your Google Calendar the moment each email sends, in the recipient's time zone.
+                New drafts include a placeholder line that gets replaced at send time.
+              </p>
+              {settings.live_availability && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={lbl}>Your time zone</label>
+                    <select value={settings.avail_timezone || 'America/Los_Angeles'} onChange={e => set('avail_timezone', e.target.value)}>
+                      {TIMEZONES.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Calling hours (your time)</label>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select value={settings.avail_start_hour ?? 9} onChange={e => set('avail_start_hour', Number(e.target.value))}>
+                        {HOURS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
+                      </select>
+                      <span style={{ color: 'var(--muted)' }}>to</span>
+                      <select value={settings.avail_end_hour ?? 17} onChange={e => set('avail_end_hour', Number(e.target.value))}>
+                        {HOURS.map(h => <option key={h} value={h}>{hourLabel(h)}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={lbl}>Look ahead (days)</label>
+                    <input type="number" min={1} max={21} value={settings.avail_days_ahead ?? 7} onChange={e => set('avail_days_ahead', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Shortest slot to offer (minutes)</label>
+                    <input type="number" min={15} step={15} value={settings.avail_min_minutes ?? 30} onChange={e => set('avail_min_minutes', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Days to list in each email</label>
+                    <input type="number" min={1} max={7} value={settings.avail_max_days ?? 4} onChange={e => set('avail_max_days', Number(e.target.value))} />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'end' }}>
+                    <button type="button" className="btn-secondary btn-sm" onClick={handlePreview}>Preview for a New York contact</button>
+                  </div>
+                  {preview && (
+                    <div style={{ gridColumn: '1 / -1', background: 'var(--surface2)', borderRadius: 'var(--radius)', padding: 12, fontSize: 13 }}
+                      dangerouslySetInnerHTML={{ __html: preview }} />
+                  )}
+                </div>
+              )}
+            </div>
             <div>
-              <label style={lbl}>Availability (shown in emails)</label>
+              <label style={lbl}>{settings.live_availability ? 'Written availability (used if Google Calendar is unavailable)' : 'Availability (shown in emails)'}</label>
               <input
                 value={settings.availability || ''}
                 onChange={e => set('availability', e.target.value)}
@@ -193,3 +260,14 @@ export default function Settings() {
 }
 
 const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 4, fontWeight: 500 }
+
+const TIMEZONES = [
+  ['America/Los_Angeles', 'Pacific Time'],
+  ['America/Denver', 'Mountain Time'],
+  ['America/Chicago', 'Central Time'],
+  ['America/New_York', 'Eastern Time'],
+]
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
+function hourLabel(h) {
+  return h === 12 ? '12pm' : h > 12 ? `${h - 12}pm` : `${h}am`
+}

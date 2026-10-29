@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { getContacts } from '../api/client'
+import { getContacts, getCalendarEvents } from '../api/client'
 
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAYS_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -12,6 +12,7 @@ const E = {
   followup: { label: 'Follow-up',  color: '#eab308', bg: 'rgba(234,179,8,0.15)'   },
   meeting:  { label: 'Meeting',    color: '#c084fc', bg: 'rgba(192,132,252,0.15)' },
   referral: { label: 'Referral',   color: '#34d399', bg: 'rgba(52,211,153,0.15)'  },
+  google:   { label: 'Google',     color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
 }
 
 // Use local date to avoid UTC-offset "wrong day" bug
@@ -29,7 +30,7 @@ function parseLocalDate(iso) {
   return new Date(s)
 }
 
-function buildEventMap(contacts) {
+function buildEventMap(contacts, googleEvents = []) {
   const map = {}
   function add(key, event) {
     if (!key) return
@@ -54,6 +55,17 @@ function buildEventMap(contacts) {
       if (d) add(localDateKey(d), { ...E.referral, contact: c, time: null })
     }
   }
+  // Google Calendar events, minus the coffee chats the app already shows from contacts
+  const synced = new Set(contacts.map(c => c.google_event_id).filter(Boolean))
+  for (const g of googleEvents) {
+    if (synced.has(g.id)) continue
+    const d = g.all_day ? parseLocalDate(g.start.slice(0, 10)) : new Date(g.start)
+    add(localDateKey(d), {
+      ...E.google,
+      contact: { name: g.title, title: 'Google Calendar', firm: '', meeting_end: g.all_day ? null : g.end },
+      time: g.all_day ? null : d,
+    })
+  }
   return map
 }
 
@@ -76,6 +88,8 @@ export default function Calendar() {
   const [selectedDay, setSelectedDay] = useState(null)
   const [filterTier, setFilterTier] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
+  const [googleEvents, setGoogleEvents] = useState([])
+  const [googleError, setGoogleError] = useState('')
 
   useEffect(() => {
     const load = () => getContacts().then(setContacts).catch(() => {})
@@ -91,7 +105,18 @@ export default function Calendar() {
     return true
   }), [contacts, filterTier, filterStatus])
 
-  const eventMap = useMemo(() => buildEventMap(filteredContacts), [filteredContacts])
+  // Load Google Calendar events for the visible range (plus a week either side)
+  useEffect(() => {
+    const from = view === 'month' ? new Date(year, month, 1) : new Date(weekStart)
+    const to = view === 'month' ? new Date(year, month + 1, 1) : new Date(weekStart.getTime() + 7 * 86400000)
+    from.setDate(from.getDate() - 7)
+    to.setDate(to.getDate() + 7)
+    getCalendarEvents(from.toISOString(), to.toISOString())
+      .then(evts => { setGoogleEvents(evts); setGoogleError('') })
+      .catch(e => { setGoogleEvents([]); setGoogleError(e.response?.data?.detail || e.message) })
+  }, [view, year, month, weekStart])
+
+  const eventMap = useMemo(() => buildEventMap(filteredContacts, googleEvents), [filteredContacts, googleEvents])
 
   // ── Month navigation ──
   function prevMonth() {
@@ -201,6 +226,11 @@ export default function Calendar() {
           ))}
         </div>
 
+        {googleError && (
+          <span title={googleError} style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Google Calendar not showing — reconnect Gmail in Settings
+          </span>
+        )}
         {/* Legend */}
         <div style={{ display: 'flex', gap: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 6px' }}>
           {Object.values(E).map((e, i) => (
