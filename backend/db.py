@@ -67,6 +67,21 @@ DEFAULT_TEMPLATES = [
         "tone": "respectful and concise",
         "max_words": 120,
     },
+    # Client-side follow-ups: the reconnect is where the referral ask belongs
+    {
+        "tier": "client_followup_cold",
+        "prompt": "Write a short, polite follow-up email from Gilbert Knight to {name}, {title} at {firm}. He emailed {days_since} days ago about {firm}'s recent work with {bank} ({deal}) and hasn't heard back; this is follow-up number {followup_number}. Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nOne or two friendly sentences bumping his earlier note: he'd still value hearing about the deal and working with {bank} from the company's side, even in a quick 15-minute call.\n\nBest,\nGilbert\n\nDo not apologize repeatedly, do not guilt-trip, do not mention scheduling flexibility, do not ask for a referral, and do not add a subject line.",
+        "subject": "Following up - Gilbert Knight",
+        "tone": "polite and brief",
+        "max_words": 70,
+    },
+    {
+        "tier": "client_followup_warm",
+        "prompt": "Write a warm follow-up email from Gilbert Knight to {name}, {title} at {firm}, whom he has already spoken with about {firm}'s work with {bank} ({deal}). {notes_line} Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nThank them again for their time and perspective on the deal, mentioning something specific from the notes if there is anything.\n\nA one-sentence update on his investment banking recruiting.\n\nAsk, politely and without pressure, whether there's anyone on the {bank} team they'd suggest he speak with, and say he'd be grateful for an introduction if they're comfortable making one.\n\nBest,\nGilbert\n\nKeep it under 120 words. Do not add a subject line.",
+        "subject": "Thank you - Gilbert Knight",
+        "tone": "warm and appreciative",
+        "max_words": 120,
+    },
     {
         "tier": "followup_cold",
         "prompt": "Write a short, polite follow-up email from Gilbert Knight to {name} at {firm}. They haven't replied to his networking email from {days_since} days ago; this is follow-up number {followup_number}. Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nOne or two friendly sentences bumping his earlier note, saying he'd still love to hear about their path and experience at {firm} and would be grateful for even 15 minutes.\n\nBest,\nGilbert\n\nDo not apologize repeatedly, do not guilt-trip, do not mention scheduling flexibility, do not add a subject line, and word it differently from a generic template.",

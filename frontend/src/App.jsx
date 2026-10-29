@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
 import FindPeople from './pages/FindPeople'
 import Deals from './pages/Deals'
+import ClientDashboard from './pages/ClientDashboard'
 import Calendar from './pages/Calendar'
 import EmailStudio from './pages/EmailStudio'
 import Settings from './pages/Settings'
@@ -69,11 +70,12 @@ function Layout() {
           ))}
         </div>
         {(side === 'client' ? [
-          { to: '/client', label: 'Deals' },
+          { to: '/client', label: 'Dashboard' },
+          { to: '/client/deals', label: 'Deals' },
           { to: '/client/contacts', label: 'Client Contacts' },
-          { to: '/calendar', label: 'Calendar' },
-          { to: '/studio', label: 'Email Studio' },
-          { to: '/settings', label: 'Settings' },
+          // Client-side copies of shared pages, so opening them doesn't flip the sidebar back to Bankers
+          { to: '/client/calendar', label: 'Calendar' },
+          { to: '/client/studio', label: 'Email Studio' },
         ] : [
           { to: '/', label: 'Dashboard' },
           { to: '/contacts', label: 'Contacts' },
@@ -90,7 +92,7 @@ function Layout() {
             {label}
           </NavLink>
         ))}
-        {user?.email === adminEmail && (
+        {side === 'banker' && user?.email === adminEmail && (
           <NavLink to="/admin" style={({ isActive }) => ({
             ...navLink,
             background: isActive ? 'var(--surface2)' : 'transparent',
@@ -128,10 +130,13 @@ function Layout() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/find" element={<FindPeople />} />
-          <Route path="/client" element={<Deals />} />
+          <Route path="/client" element={<ClientDashboard />} />
+          <Route path="/client/deals" element={<Deals />} />
           <Route path="/client/contacts" element={<Contacts side="client" />} />
           <Route path="/calendar" element={<Calendar />} />
           <Route path="/studio" element={<EmailStudio />} />
+          <Route path="/client/calendar" element={<Calendar />} />
+          <Route path="/client/studio" element={<EmailStudio key="client" side="client" />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/admin" element={<Admin />} />
         </Routes>

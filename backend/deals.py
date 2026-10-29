@@ -102,6 +102,87 @@ def research_deals(bank: str, days: int = 90) -> list[dict]:
     return _parse(text)
 
 
+def _brief_prompt(deal: dict) -> str:
+    who = f"{deal['company']}" + (f" and {deal['counterparty']}" if deal.get("counterparty") else "")
+    return f"""Research this deal and write a briefing for a college student preparing to network with people involved.
+
+Deal: {deal.get('summary') or ''}
+Company (the bank's client): {deal['company']}
+Other party: {deal.get('counterparty') or 'unknown'}
+Bank: {deal['bank']}, {deal.get('bank_role') or 'advisor'}
+Announced: {deal.get('announced_date') or 'unknown'}
+{('Known source: ' + deal['source_url']) if deal.get('source_url') else ''}
+
+Search for the announcement and coverage of {who}. Only state facts your sources support; say "not disclosed" when something isn't public.
+
+Respond with only this JSON inside <brief> tags, no other text:
+<brief>
+{{"headline": "one line: who did what with whom",
+  "overview": "2-4 sentences on what the deal is",
+  "terms": ["key terms as short lines: value, price per share or multiple, consideration, financing, expected close"],
+  "rationale": "2-3 sentences on why the companies did it",
+  "timeline": ["YYYY-MM-DD - event"],
+  "advisors": ["Firm - role (who they advised)"],
+  "people": ["Name, title - role in the deal (executives quoted or named)"],
+  "talking_points": ["3-4 specific, informed things a student could mention or ask about when reaching out to someone at {deal['company']} or {deal['bank']}"]}}
+</brief>"""
+
+
+def _collect_sources(content) -> list[dict]:
+    """Every page the search touched: cited pages first, then other results, de-duplicated by URL."""
+    cited, seen, other = [], set(), []
+    for block in content:
+        for c in getattr(block, "citations", None) or []:
+            url = getattr(c, "url", None)
+            if url and url not in seen:
+                seen.add(url)
+                cited.append({"url": url, "title": getattr(c, "title", "") or url, "cited": True})
+        if block.type == "web_search_tool_result" and isinstance(block.content, list):
+            for r in block.content:
+                url = getattr(r, "url", None)
+                if url and url not in seen:
+                    seen.add(url)
+                    other.append({"url": url, "title": getattr(r, "title", "") or url, "cited": False})
+    return cited + other
+
+
+def research_brief(deal: dict) -> tuple[dict, list[dict]]:
+    """Claude + web search writes a briefing on one deal. Returns (brief, sources)."""
+    messages = [{"role": "user", "content": _brief_prompt(deal)}]
+    content = []
+    for _ in range(4):
+        try:
+            response = client.beta.messages.create(
+                model=MODEL,
+                max_tokens=16000,
+                output_config={"effort": "medium"},
+                tools=[{"type": "web_search_20260209", "name": "web_search", "max_uses": 4}],
+                betas=["server-side-fallback-2026-07-01"],
+                fallbacks="default",
+                messages=messages,
+            )
+        except anthropic.APIStatusError as e:
+            raise DealSearchError(f"Claude API error {e.status_code}: {e.message}")
+        except anthropic.APIConnectionError:
+            raise DealSearchError("Couldn't reach the Claude API. Check your internet connection.")
+        log_claude(response, "deal brief")
+        content += list(response.content)
+        if response.stop_reason == "refusal":
+            raise DealSearchError("Claude declined to research this deal.")
+        if response.stop_reason != "pause_turn":
+            break
+        messages.append({"role": "assistant", "content": response.content})
+    text = "".join(b.text for b in content if b.type == "text")
+    m = re.search(r"<brief>\s*(\{.*\})\s*</brief>", text, re.DOTALL) or re.search(r"(\{.*\})", text, re.DOTALL)
+    try:
+        brief = json.loads(m.group(1)) if m else {}
+    except json.JSONDecodeError:
+        brief = {}
+    if not brief:
+        raise DealSearchError("Couldn't put together a brief for this deal. Try again.")
+    return brief, _collect_sources(content)
+
+
 def save_deals(user_id: str, bank: str, deals: list[dict]) -> list[dict]:
     """Store new deals, skipping ones already saved for this bank (same company and date)."""
     existing = {(d["company"].lower(), d.get("announced_date")) for d in list_deals(user_id, bank)}

@@ -147,8 +147,10 @@ WARM_STATUSES = {"Replied", "Warm", "Meeting Scheduled", "Referral"}
 
 
 def followup_kind(contact: dict) -> str:
-    """'followup_warm' for people who've replied or met with you, otherwise 'followup_cold'."""
-    return "followup_warm" if contact.get("status") in WARM_STATUSES else "followup_cold"
+    """'followup_warm' for people who've replied or met with you, otherwise 'followup_cold'.
+    Client-side contacts use their own versions ('client_followup_*')."""
+    kind = "followup_warm" if contact.get("status") in WARM_STATUSES else "followup_cold"
+    return f"client_{kind}" if contact.get("contact_type") == "client" else kind
 
 
 def _plain_text(html: str) -> str:
@@ -178,6 +180,7 @@ def generate_followup(contact: dict, templates: dict, settings: dict) -> dict:
         "followup_number": (contact.get("followup_count") or 0) + 1,
         "notes_line": f"Notes from earlier conversations: {notes}" if notes else "",
         "location_line": "", "school_line": "", "availability_line": "",
+        "bank": contact.get("deal_bank") or "", "deal": contact.get("deal_summary") or "",
     }
     prompt = template["prompt"].format_map(_Blank(values))
     original = _plain_text(contact.get("generated_email") or "")

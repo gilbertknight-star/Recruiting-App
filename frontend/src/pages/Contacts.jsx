@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings, importRecruitingFolder } from '../api/client'
+import { revealContacts, getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings, importRecruitingFolder } from '../api/client'
 import TierBadge from '../components/TierBadge'
 import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
@@ -30,6 +30,7 @@ export default function Contacts({ side = 'banker' }) {
   const [editContact, setEditContact] = useState(null)
   const [filterStatus, setFilterStatus] = useState('')
   const [filterTier, setFilterTier] = useState('')
+  const [filterBank, setFilterBank] = useState('')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [msg, setMsg] = useState('')
@@ -227,15 +228,32 @@ export default function Contacts({ side = 'banker' }) {
     })
   }
 
+  const [confirmReveal, setConfirmReveal] = useState(false)
+
+  async function handleReveal(people) {
+    setConfirmReveal(false)
+    setLoading(true)
+    try {
+      const res = await revealContacts(people.map(c => c.id))
+      setMsg(`Got contact info for ${res.updated}${res.not_found ? ` · ${res.not_found} not found in Apollo` : ''}`)
+      setContacts(await getContacts())
+    } catch (e) {
+      setMsg(e.response?.data?.detail || 'Get contact info failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function toggleAll() {
     if (selected.size === filtered.length) setSelected(new Set())
     else setSelected(new Set(filtered.map(c => c.id)))
   }
 
   const sideContacts = contacts.filter(c => (c.contact_type || 'banker') === side)
+  const clientBanks = [...new Set(sideContacts.map(c => c.deal_bank).filter(Boolean))].sort()
   const filtered = sideContacts.filter(c => {
     if (filterStatus && c.status !== filterStatus) return false
-    if (filterTier && c.tier !== filterTier) return false
+    if (side === 'client' ? (filterBank && c.deal_bank !== filterBank) : (filterTier && c.tier !== filterTier)) return false
     if (search) {
       const q = search.toLowerCase()
       return c.name.toLowerCase().includes(q) || c.firm.toLowerCase().includes(q) || c.email.toLowerCase().includes(q)
@@ -330,15 +348,35 @@ export default function Contacts({ side = 'banker' }) {
           <option value="">All Statuses</option>
           {STATUSES.map(s => <option key={s}>{s}</option>)}
         </select>
-        <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ width: 150 }}>
-          <option value="">All Tiers</option>
-          <option value="analyst_associate">Analyst / Assoc</option>
-          <option value="vp">VP / Director</option>
-          <option value="md_partner">MD / Partner</option>
-          <option value="n_a">N/A</option>
-        </select>
+        {side === 'client' ? (
+          <select value={filterBank} onChange={e => setFilterBank(e.target.value)} style={{ width: 170 }}>
+            <option value="">All Banks</option>
+            {clientBanks.map(b => <option key={b} value={b}>{b} ({sideContacts.filter(c => c.deal_bank === b).length})</option>)}
+          </select>
+        ) : (
+          <select value={filterTier} onChange={e => setFilterTier(e.target.value)} style={{ width: 150 }}>
+            <option value="">All Tiers</option>
+            <option value="analyst_associate">Analyst / Assoc</option>
+            <option value="vp">VP / Director</option>
+            <option value="md_partner">MD / Partner</option>
+            <option value="n_a">N/A</option>
+          </select>
+        )}
         {selected.size > 0 && (
           <div style={{ display: 'flex', gap: 8, marginLeft: 'auto' }}>
+            {(() => {
+              const noEmail = [...selected].map(id => contacts.find(c => c.id === id)).filter(c => c && !c.email && c.apollo_id)
+              if (!noEmail.length) return null
+              return confirmReveal ? (
+                <>
+                  <span style={{ fontSize: 12, alignSelf: 'center' }}>Use {noEmail.length} Apollo credit{noEmail.length === 1 ? '' : 's'}?</span>
+                  <button className="btn-secondary btn-sm" onClick={() => setConfirmReveal(false)}>Cancel</button>
+                  <button className="btn-primary btn-sm" onClick={() => handleReveal(noEmail)} disabled={loading}>Confirm</button>
+                </>
+              ) : (
+                <button className="btn-secondary btn-sm" onClick={() => setConfirmReveal(true)}>Get contact info ({noEmail.length})</button>
+              )
+            })()}
             <button className="btn-secondary btn-sm" onClick={handleGenerateSelected} disabled={loading}>
               {loading ? 'Generating…' : `Generate (${selected.size})`}
             </button>
@@ -372,7 +410,7 @@ export default function Contacts({ side = 'banker' }) {
               </th>
               <th style={{ minWidth: 140 }}>Name</th>
               <th style={{ minWidth: 160 }}>Title / Firm</th>
-              <th style={{ minWidth: 100 }}>Tier</th>
+              <th style={{ minWidth: side === 'client' ? 220 : 100 }}>{side === 'client' ? 'Client of' : 'Tier'}</th>
               <th style={{ minWidth: 140 }}>Status</th>
               <th style={{ minWidth: 110 }}>Sent</th>
               <th style={{ minWidth: 110 }}>Follow-up Due</th>
@@ -392,18 +430,27 @@ export default function Contacts({ side = 'banker' }) {
                 </td>
               </tr>
             )}
-            {filtered.map(c => (
+            {(side === 'client'
+              ? [...filtered].sort((a, b) => (a.deal_bank || '').localeCompare(b.deal_bank || '') || (a.firm || '').localeCompare(b.firm || ''))
+              : filtered).map(c => (
               <tr key={c.id}>
                 <td style={{ textAlign: 'center' }}><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} style={{ cursor: 'pointer' }} /></td>
                 <td>
                   <div style={{ fontWeight: 500, cursor: 'pointer' }} onClick={() => setEditContact(c)}>{c.name}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: 12 }}>{c.email}</div>
+                  <div style={{ color: c.email ? 'var(--muted)' : 'var(--yellow)', fontSize: 12 }}>{c.email || 'No email yet'}</div>
                 </td>
                 <td>
                   <div>{c.title}</div>
                   <div style={{ color: 'var(--muted)', fontSize: 12 }}>{c.firm}{c.location ? ` · ${c.location}` : ''}</div>
                 </td>
-                <td><TierBadge tier={c.tier} alumni={c.alumni} level={c.level} /></td>
+                <td>
+                  {side === 'client' ? (
+                    <div>
+                      <span className="badge" style={{ background: 'rgba(249,115,22,0.15)', color: '#f97316' }}>{c.deal_bank || 'Bank'} client</span>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, maxWidth: 260 }}>{c.deal_summary}</div>
+                    </div>
+                  ) : <TierBadge tier={c.tier} alumni={c.alumni} level={c.level} />}
+                </td>
                 <td>
                   <select value={c.status} onChange={e => {
                     patchContact(c.id, { status: e.target.value })

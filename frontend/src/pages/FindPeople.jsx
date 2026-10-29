@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { apolloSearch, apolloReveal } from '../api/client'
+import { apolloSearch, apolloReveal, addDealContacts } from '../api/client'
 import SavedInApollo from '../components/SavedInApollo'
 import LinkedInAdd from '../components/LinkedInAdd'
 import { SENIORITIES, splitList } from '../lib/apolloFilters'
@@ -103,6 +103,22 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
     }
   }
 
+  const [dealSummary, setDealSummary] = useState(null)
+
+  async function handleAddToClients() {
+    const people = (results?.people || []).filter(p => selected[p.apollo_id]).map(p => ({
+      apollo_id: p.apollo_id, first_name: p.first_name, last_name: p.last_name, title: p.title, firm: p.firm,
+    }))
+    setError('')
+    try {
+      const res = await addDealContacts(dealId, people)
+      setDealSummary(res)
+      setSelected({})
+    } catch (e) {
+      setError(e.response?.data?.detail || e.message)
+    }
+  }
+
   async function handleReveal() {
     const ids = Object.keys(selected).filter(id => selected[id])
     setRevealing(true)
@@ -173,6 +189,13 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
         {error && <p style={{ color: 'var(--red)', fontSize: 13 }}>{error}</p>}
       </form>
 
+      {dealSummary && (
+        <div className="card" style={{ marginBottom: 16, borderColor: 'var(--green)' }}>
+          Added <strong>{dealSummary.added}</strong> to Client Contacts{dealSummary.skipped > 0 && <>, {dealSummary.skipped} already there</>}.
+          They're saved without an email for now; use Get contact info on the Client Contacts page when you're ready.{' '}
+          <Link to="/client/contacts" style={{ color: 'var(--accent)' }}>Go to Client Contacts →</Link>
+        </div>
+      )}
       {summary && (
         <div className="card" style={{ marginBottom: 16, borderColor: 'var(--green)' }}>
           Added <strong>{summary.added}</strong> to Contacts
@@ -251,6 +274,11 @@ export function SearchApollo({ initialFirm = '', initialTitles = '', dealId = nu
                 ? `${selectedCount} selected · ${selectedCount} credit${selectedCount === 1 ? '' : 's'}`
                 : 'Search only · no credits'}
             </span>
+            {dealId && (
+              <button className="btn-primary btn-sm" disabled={selectedCount === 0} onClick={handleAddToClients} style={{ marginRight: 8 }}>
+                Add {selectedCount || ''} to Client Contacts
+              </button>
+            )}
             {!results.credits_enabled ? (
               <span style={{ fontSize: 13, color: 'var(--muted)' }}>
                 Paid lookups are off. Set APOLLO_ALLOW_CREDITS=true in backend/.env to use Get contact info.

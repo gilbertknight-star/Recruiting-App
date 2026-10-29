@@ -768,6 +768,118 @@ def patch_deal(deal_id: str, updates: DealUpdate, user=Depends(get_current_user)
     return result
 
 
+class DealBriefRequest(BaseModel):
+    refresh: bool = False
+
+
+@app.post("/deals/{deal_id}/brief")
+def deal_brief(deal_id: str, req: DealBriefRequest, user=Depends(get_current_user)):
+    """AI briefing on a deal with its sources. Saved after the first run (about $0.50), so reopening is free."""
+    deal = next((d for d in deals.list_deals(user.id) if d["id"] == deal_id), None)
+    if not deal:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    if deal.get("brief") and not req.refresh:
+        return deal
+    try:
+        brief, sources = deals.research_brief(deal)
+    except deals.DealSearchError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return deals.update_deal(user.id, deal_id, {
+        "brief": brief, "brief_sources": sources, "brief_at": datetime.utcnow().isoformat(),
+    })
+
+
+class DealPerson(BaseModel):
+    apollo_id: str
+    first_name: str = ""
+    last_name: str = ""
+    title: str = ""
+    firm: str = ""
+
+
+class DealContactsRequest(BaseModel):
+    people: list[DealPerson]
+
+
+@app.post("/deals/{deal_id}/contacts")
+def add_deal_contacts(deal_id: str, req: DealContactsRequest, user=Depends(get_current_user)):
+    """Save people found for a deal as client contacts, without spending credits. Their email and full
+    last name come later from 'Get contact info' (or by editing the contact)."""
+    extra = _deal_fields(user.id, deal_id)
+    if not extra:
+        raise HTTPException(status_code=404, detail="Deal not found")
+    existing = {c.get("apollo_id") for c in get_all_contacts(user.id) if c.get("apollo_id")}
+    added, skipped = [], 0
+    for p in req.people:
+        if p.apollo_id in existing:
+            skipped += 1
+            continue
+        added.append(create_contact(user.id, {
+            "name": f"{p.first_name} {p.last_name}".strip(),
+            "email": "",
+            "title": p.title,
+            "firm": p.firm,
+            "apollo_id": p.apollo_id,
+            "notes": "Found through Apollo for a client-side deal. Use Get contact info for their email.",
+            "status": "Cold",
+            **extra,
+        }))
+    return {"added": len(added), "skipped": skipped}
+
+
+class RevealContactsRequest(BaseModel):
+    contact_ids: list[str]
+
+
+@app.post("/contacts/reveal")
+def reveal_contacts(req: RevealContactsRequest, user=Depends(get_current_user)):
+    """Fill in full name, email and LinkedIn for saved contacts that came from Apollo (1 credit each)."""
+    contacts = {c["id"]: c for c in get_all_contacts(user.id) if c["id"] in req.contact_ids and c.get("apollo_id")}
+    if not contacts:
+        raise HTTPException(status_code=400, detail="None of these contacts came from Apollo")
+    try:
+        found = {p["apollo_id"]: p for p in apollo.reveal_people([c["apollo_id"] for c in contacts.values()])}
+    except apollo.ApolloError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    updated = 0
+    for c in contacts.values():
+        p = found.get(c["apollo_id"])
+        if p:
+            update_contact(user.id, c["id"], {k: v for k, v in {
+                "name": p["name"], "email": p["email"], "linkedin_url": p["linkedin_url"], "location": p["location"],
+            }.items() if v})
+            updated += 1
+    return {"updated": updated, "not_found": len(contacts) - updated}
+
+
+@app.get("/deals/overview")
+def deals_overview(user=Depends(get_current_user)):
+    """Client dashboard: each bank's deals with how far outreach has gone on each."""
+    all_deals = deals.list_deals(user.id)
+    clients = [c for c in get_all_contacts(user.id) if c.get("contact_type") == "client"]
+    by_deal: dict = {}
+    for c in clients:
+        by_deal.setdefault(c.get("deal_id"), []).append(c)
+    banks: dict = {}
+    for d in all_deals:
+        people = by_deal.get(d["id"], [])
+        row = {
+            **{k: d.get(k) for k in ("id", "company", "counterparty", "deal_type", "announced_date", "status", "summary")},
+            "has_brief": bool(d.get("brief")),
+            "contacts": len(people),
+            "emailed": sum(1 for p in people if p.get("sent_at")),
+            "replied": sum(1 for p in people if p.get("status") in ("Replied", "Warm", "Meeting Scheduled", "Referral")),
+        }
+        b = banks.setdefault(d["bank"], {"bank": d["bank"], "deals": []})
+        b["deals"].append(row)
+    out = []
+    for b in banks.values():
+        ds = b["deals"]
+        out.append({**b, **{k: sum(x[k] for x in ds) for k in ("contacts", "emailed", "replied")},
+                    "deal_count": len(ds), "pursuing": sum(1 for x in ds if x["status"] == "pursuing")})
+    return sorted(out, key=lambda b: b["bank"].lower())
+
+
 @app.delete("/deals/{deal_id}")
 def remove_deal(deal_id: str, user=Depends(get_current_user)):
     deals.delete_deal(user.id, deal_id)

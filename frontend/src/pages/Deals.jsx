@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import DealBrief from '../components/DealBrief'
 import { getDeals, searchDeals, updateDeal, deleteDeal, getDealClientTitles } from '../api/client'
 import { SearchApollo } from './FindPeople'
 
@@ -26,9 +27,11 @@ export default function Deals() {
   const [openDeal, setOpenDeal] = useState(null)
   const [clientTitles, setClientTitles] = useState([])
   const [hideSkipped, setHideSkipped] = useState(true)
+  const [briefId, setBriefId] = useState(null)
+  const [params] = useSearchParams()
 
   useEffect(() => {
-    getDeals().then(setDeals).catch(() => {})
+    getDeals().then(ds => { setDeals(ds); if (params.get('deal')) setBriefId(params.get('deal')) }).catch(() => {})
     getDealClientTitles().then(setClientTitles).catch(() => {})
   }, [])
 
@@ -129,7 +132,7 @@ export default function Deals() {
                 <div style={{ fontSize: 12, color: 'var(--muted)' }}>{formatDate(d.announced_date)}</div>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 600 }}>
-                    {d.company}
+                    <span onClick={() => setBriefId(d.id)} style={{ cursor: 'pointer', borderBottom: '1px dashed var(--muted)' }} title="Open deal brief">{d.company}</span>
                     <span className="badge" style={{ marginLeft: 8, background: 'var(--surface2)', color: 'var(--muted)', fontWeight: 500 }}>{d.deal_type || 'Deal'}</span>
                   </div>
                   <div style={{ fontSize: 13, marginTop: 2 }}>{d.summary}</div>
@@ -143,6 +146,7 @@ export default function Deals() {
                     style={{ width: 110, padding: '3px 6px', fontSize: 12, color: st.color, fontWeight: 600 }}>
                     {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
                   </select>
+                  <button className="btn-secondary btn-sm" onClick={() => setBriefId(d.id)}>{d.brief ? 'Brief' : 'Get brief'}</button>
                   <button className={open ? 'btn-secondary btn-sm' : 'btn-primary btn-sm'} onClick={() => {
                     setOpenDeal(open ? null : d.id)
                     if (!open && d.status === 'new') setStatus(d, 'pursuing')
@@ -170,6 +174,13 @@ export default function Deals() {
           )
         })}
       </div>
+      {briefId && deals.find(d => d.id === briefId) && (
+        <DealBrief
+          deal={deals.find(d => d.id === briefId)}
+          onClose={() => setBriefId(null)}
+          onUpdated={updated => setDeals(ds => ds.map(x => x.id === updated.id ? updated : x))}
+        />
+      )}
     </div>
   )
 }

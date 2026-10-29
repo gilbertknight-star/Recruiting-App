@@ -10,9 +10,12 @@ const TIERS = [
   { key: 'uoig_alum',        label: 'UOIG Alum',           short: 'UOIG', divider: true, color: '#a78bfa' },
   { key: 'uo_alum',          label: 'UO Alum',             short: 'UO',                  color: '#fb923c' },
   // Follow-ups: picked automatically from the contact's status (no reply yet vs. already talked)
-  { key: 'client_referral',  label: 'Client referral',      short: 'Client', divider: true, color: '#f97316' },
   { key: 'followup_cold',    label: 'Follow-up: No reply',  short: 'No reply', divider: true, color: '#38bdf8' },
   { key: 'followup_warm',    label: 'Follow-up: Reconnect', short: 'Reconnect',               color: '#34d399' },
+  // Client side (people at companies a bank advised)
+  { key: 'client_referral',      label: 'Client: First email',          short: 'First',     side: 'client', color: '#f97316' },
+  { key: 'client_followup_cold', label: 'Client follow-up: No reply',   short: 'No reply',  side: 'client', divider: true, color: '#38bdf8' },
+  { key: 'client_followup_warm', label: 'Client follow-up: Reconnect',  short: 'Reconnect', side: 'client', color: '#34d399' },
 ]
 
 const VARIABLES = [
@@ -48,7 +51,7 @@ function ruleColor(val) {
   return 'var(--muted)'
 }
 
-export default function EmailStudio() {
+export default function EmailStudio({ side = 'banker' }) {
   const [section, setSection] = useState('templates')
 
   return (
@@ -63,7 +66,9 @@ export default function EmailStudio() {
           <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, letterSpacing: '-0.3px' }}>Email Studio</h1>
           <p style={{ color: 'var(--muted)', fontSize: 13, margin: '3px 0 0' }}>
             {section === 'templates'
-              ? 'Configure AI prompts and sending rules for each contact tier'
+              ? (side === 'client'
+                ? 'AI prompts for emails to people at companies a bank advised'
+                : 'Configure AI prompts and sending rules for each contact tier')
               : 'Generate a one-off email draft with a free-form AI prompt'}
           </p>
         </div>
@@ -82,7 +87,7 @@ export default function EmailStudio() {
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-        {section === 'templates' ? <Templates /> : <Compose />}
+        {section === 'templates' ? <Templates side={side} /> : <Compose />}
       </div>
     </div>
   )
@@ -90,9 +95,10 @@ export default function EmailStudio() {
 
 /* ── Templates ──────────────────────────────────────────────────── */
 
-function Templates() {
+function Templates({ side }) {
+  const sideTiers = TIERS.filter(t => (t.side || 'banker') === side)
   const [templates, setTemplates] = useState(null)
-  const [activeTier, setActiveTier] = useState('analyst_associate')
+  const [activeTier, setActiveTier] = useState(side === 'client' ? 'client_referral' : 'analyst_associate')
   const [draft, setDraft] = useState({})
   const [saveState, setSaveState] = useState('idle')
   const [rules, setRules] = useState(DEFAULT_RULES)
@@ -153,9 +159,9 @@ function Templates() {
 
         {/* Header */}
         <div style={{ padding: '16px 16px 12px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>Template Tier</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>{side === 'client' ? 'Client Templates' : 'Template Tier'}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {TIERS.map(t => (
+            {sideTiers.map(t => (
               <div key={t.key}>
                 {t.divider && <div style={{ borderTop: '1px solid var(--border)', margin: '6px 0 5px', opacity: 0.5 }} />}
                 <button onClick={() => setActiveTier(t.key)} style={{
@@ -175,8 +181,8 @@ function Templates() {
           </div>
         </div>
 
-        {/* Sending Rules */}
-        <div style={{ flex: 1, padding: '16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* Sending Rules (banker tiers only) */}
+        <div style={{ flex: 1, padding: '16px', display: side === 'banker' ? 'flex' : 'none', flexDirection: 'column', gap: 12 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>Sending Rules</div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>Click any value to change</div>
