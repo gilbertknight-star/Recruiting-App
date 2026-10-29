@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { getStats, scanReplies, getContacts, getScheduled } from '../api/client'
+import DeadlinesTodos from '../components/DeadlinesTodos'
 
 const STATUS_COLOR = {
   'Cold':              '#64748b',
@@ -94,6 +95,9 @@ export default function Dashboard() {
         <StatCard label="Warm Leads"      value={stats?.warm}              color="#eab308" />
         <StatCard label="Meetings"        value={stats?.meeting_scheduled} color="#c084fc" />
       </div>
+
+      {/* ── Application deadlines + to-dos ───────────────────────── */}
+      <DeadlinesTodos />
 
       {/* ── Pipeline + daily cap ─────────────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 12 }}>

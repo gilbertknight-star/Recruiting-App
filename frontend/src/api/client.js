@@ -55,7 +55,16 @@ export const apolloSaved = (params) => api.post('/apollo/saved', params).then(r 
 export const apolloImportSaved = (body) => api.post('/apollo/saved/import', body).then(r => r.data)
 
 export const getCalendarEvents = (start, end) => api.get('/calendar/events', { params: { start, end } }).then(r => r.data)
-export const getCalendarList = () => api.get('/calendar/list').then(r => r.data)
+export const getApplications = () => api.get('/applications').then(r => r.data)
+export const createApplication = (app) => api.post('/applications', app).then(r => r.data)
+export const updateApplication = (id, updates) => api.patch(`/applications/${id}`, updates).then(r => r.data)
+export const deleteApplication = (id) => api.delete(`/applications/${id}`).then(r => r.data)
+export const getTodos = () => api.get('/todos').then(r => r.data)
+export const createTodo = (todo) => api.post('/todos', todo).then(r => r.data)
+export const updateTodo = (id, updates) => api.patch(`/todos/${id}`, updates).then(r => r.data)
+export const deleteTodo = (id) => api.delete(`/todos/${id}`).then(r => r.data)
+
+export const getCalendarList =() => api.get('/calendar/list').then(r => r.data)
 export const getAvailabilityPreview =(location = '') => api.get('/calendar/availability-preview', { params: { location } }).then(r => r.data)
 
 export const getScheduled =() => api.get('/scheduled').then(r => r.data)

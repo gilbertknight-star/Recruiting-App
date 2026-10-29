@@ -15,6 +15,7 @@ from contacts import (
 )
 import apollo
 import gcal
+import tracker
 from email_gen import generate_email, generate_batch, compose_free, apply_font
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
@@ -482,7 +483,8 @@ def browse_file(user=Depends(get_current_user)):
 # --- Apollo ---
 
 class ApolloSearchRequest(BaseModel):
-    firm: str
+    firm: str = ""
+    name: str = ""
     titles: Optional[list[str]] = None
     seniorities: Optional[list[str]] = None
     locations: Optional[list[str]] = None
@@ -496,8 +498,10 @@ class ApolloRevealRequest(BaseModel):
 
 @app.post("/apollo/search")
 def apollo_search(req: ApolloSearchRequest, user=Depends(get_current_user)):
+    if not req.firm.strip() and not req.name.strip():
+        raise HTTPException(status_code=400, detail="Enter a name or a firm")
     try:
-        return apollo.search_people(req.firm, req.titles, req.seniorities, req.locations, req.page, req.per_page)
+        return apollo.search_people(req.firm.strip(), req.titles, req.seniorities, req.locations, req.page, req.per_page, req.name.strip())
     except apollo.ApolloError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -577,6 +581,92 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
     if not people:
         raise HTTPException(status_code=400, detail="No people selected")
     return _import_apollo_people(user.id, people)
+
+
+# --- Application deadlines & to-dos ---
+
+class ApplicationIn(BaseModel):
+    firm: str
+    program: Optional[str] = ""
+    deadline: Optional[str] = None   # "YYYY-MM-DD"
+    status: Optional[str] = "Not started"
+    link: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class ApplicationUpdate(BaseModel):
+    firm: Optional[str] = None
+    program: Optional[str] = None
+    deadline: Optional[str] = None
+    status: Optional[str] = None
+    link: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class TodoIn(BaseModel):
+    text: str
+    due: Optional[str] = None        # "YYYY-MM-DD"
+
+
+class TodoUpdate(BaseModel):
+    text: Optional[str] = None
+    due: Optional[str] = None
+    done: Optional[bool] = None
+
+
+@app.get("/applications")
+def list_applications(user=Depends(get_current_user)):
+    return tracker.list_applications(user.id)
+
+
+@app.post("/applications")
+def add_application(body: ApplicationIn, user=Depends(get_current_user)):
+    if body.status and body.status not in tracker.APPLICATION_STATUSES:
+        raise HTTPException(status_code=400, detail="Unknown status")
+    return tracker.create_application(user.id, body.model_dump())
+
+
+@app.patch("/applications/{app_id}")
+def edit_application(app_id: str, updates: ApplicationUpdate, user=Depends(get_current_user)):
+    changes = updates.model_dump(exclude_unset=True)  # explicit null clears a deadline
+    if changes.get("status") and changes["status"] not in tracker.APPLICATION_STATUSES:
+        raise HTTPException(status_code=400, detail="Unknown status")
+    result = tracker.update_application(user.id, app_id, changes)
+    if not result:
+        raise HTTPException(status_code=404, detail="Application not found")
+    return result
+
+
+@app.delete("/applications/{app_id}")
+def remove_application(app_id: str, user=Depends(get_current_user)):
+    tracker.delete_application(user.id, app_id)
+    return {"deleted": True}
+
+
+@app.get("/todos")
+def list_todos(user=Depends(get_current_user)):
+    return tracker.list_todos(user.id)
+
+
+@app.post("/todos")
+def add_todo(body: TodoIn, user=Depends(get_current_user)):
+    if not body.text.strip():
+        raise HTTPException(status_code=400, detail="To-do can't be empty")
+    return tracker.create_todo(user.id, {"text": body.text.strip(), "due": body.due or None})
+
+
+@app.patch("/todos/{todo_id}")
+def edit_todo(todo_id: str, updates: TodoUpdate, user=Depends(get_current_user)):
+    result = tracker.update_todo(user.id, todo_id, updates.model_dump(exclude_unset=True))
+    if not result:
+        raise HTTPException(status_code=404, detail="To-do not found")
+    return result
+
+
+@app.delete("/todos/{todo_id}")
+def remove_todo(todo_id: str, user=Depends(get_current_user)):
+    tracker.delete_todo(user.id, todo_id)
+    return {"deleted": True}
 
 
 # --- Google Calendar ---

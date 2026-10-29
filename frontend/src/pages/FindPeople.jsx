@@ -6,6 +6,12 @@ import { SENIORITIES, splitList } from '../lib/apolloFilters'
 
 const PER_PAGE = 25
 
+// When you searched by full name, use it for the LinkedIn search instead of the bare first name
+function searchedName(typed, firstName) {
+  const t = typed.trim()
+  return t && t.toLowerCase().startsWith((firstName || '').toLowerCase()) ? t : firstName
+}
+
 // Free LinkedIn people search; the free Apollo search hides last names, so this matches on first name, firm and title
 function linkedinSearchUrl(name, firm, title) {
   const keywords = [name, firm, title].filter(Boolean).join(' ')
@@ -52,6 +58,7 @@ export default function FindPeople() {
 
 function SearchApollo() {
   const [firm, setFirm] = useState('')
+  const [name, setName] = useState('')
   const [titles, setTitles] = useState('')
   const [location, setLocation] = useState('')
   const [seniorities, setSeniorities] = useState([])
@@ -66,12 +73,13 @@ function SearchApollo() {
   const [summary, setSummary] = useState(null)
 
   async function runSearch(nextPage = 1) {
-    if (!firm.trim()) { setError('Enter a firm name first.'); return }
+    if (!firm.trim() && !name.trim()) { setError('Enter a name or a firm first.'); return }
     setError('')
     setLoading(true)
     try {
       const data = await apolloSearch({
         firm: firm.trim(),
+        name: name.trim(),
         titles: splitList(titles),
         seniorities,
         locations: splitList(location),
@@ -118,7 +126,11 @@ function SearchApollo() {
   return (
     <div>
       <form className="card" onSubmit={e => { e.preventDefault(); runSearch(1) }} style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr auto', gap: 12, alignItems: 'end' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr 1fr auto', gap: 12, alignItems: 'end' }}>
+          <div>
+            <label style={lbl}>Name</label>
+            <input value={name} onChange={e => { setName(e.target.value); setError('') }} placeholder="Hannah Kelso" />
+          </div>
           <div>
             <label style={lbl}>Firm</label>
             <input value={firm} onChange={e => { setFirm(e.target.value); setError('') }} placeholder="Lazard" />
@@ -218,7 +230,7 @@ function SearchApollo() {
                       <td>
                         {r?.linkedin_url
                           ? <a href={r.linkedin_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Profile</a>
-                          : <a href={linkedinSearchUrl(r ? r.name : p.first_name, p.firm, p.title)} target="_blank" rel="noreferrer" style={{ color: 'var(--muted)' }}>Find on LinkedIn</a>}
+                          : <a href={linkedinSearchUrl(r ? r.name : searchedName(name, p.first_name), p.firm, p.title)} target="_blank" rel="noreferrer" style={{ color: 'var(--muted)' }}>Find on LinkedIn</a>}
                       </td>
                     </tr>
                   )

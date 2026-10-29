@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react'
-import { getContacts, getCalendarEvents } from '../api/client'
+import { getContacts, getCalendarEvents, getApplications, getTodos } from '../api/client'
 
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const DAYS_FULL  = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -16,6 +16,8 @@ const E = {
   meeting:  { label: 'Meeting',    color: '#c084fc', bg: 'rgba(192,132,252,0.15)' },
   referral: { label: 'Referral',   color: '#34d399', bg: 'rgba(52,211,153,0.15)'  },
   google:   { label: 'Google',     color: '#94a3b8', bg: 'rgba(148,163,184,0.15)' },
+  deadline: { label: 'Deadline',   color: '#f97316', bg: 'rgba(249,115,22,0.15)'  },
+  todo:     { label: 'To-do',      color: '#38bdf8', bg: 'rgba(56,189,248,0.15)'  },
 }
 
 // Use local date to avoid UTC-offset "wrong day" bug
@@ -33,7 +35,7 @@ function parseLocalDate(iso) {
   return new Date(s)
 }
 
-function buildEventMap(contacts, googleEvents = []) {
+function buildEventMap(contacts, googleEvents = [], applications = [], todos = []) {
   const map = {}
   function add(key, event) {
     if (!key) return
@@ -71,6 +73,15 @@ function buildEventMap(contacts, googleEvents = []) {
       time: g.all_day ? null : d,
     })
   }
+  // Application deadlines and dated to-dos show as all-day items
+  for (const a of applications) {
+    if (!a.deadline) continue
+    add(a.deadline, { ...E.deadline, contact: { name: a.firm, title: a.program || 'Application', firm: a.status }, time: null })
+  }
+  for (const t of todos) {
+    if (!t.due || t.done) continue
+    add(t.due, { ...E.todo, contact: { name: t.text, title: 'To-do', firm: '' }, time: null })
+  }
   return map
 }
 
@@ -95,6 +106,13 @@ export default function Calendar() {
   const [filterStatus, setFilterStatus] = useState('')
   const [googleEvents, setGoogleEvents] = useState([])
   const [googleError, setGoogleError] = useState('')
+  const [applications, setApplications] = useState([])
+  const [todos, setTodos] = useState([])
+
+  useEffect(() => {
+    getApplications().then(setApplications).catch(() => {})
+    getTodos().then(setTodos).catch(() => {})
+  }, [])
 
   useEffect(() => {
     const load = () => getContacts().then(setContacts).catch(() => {})
@@ -121,7 +139,7 @@ export default function Calendar() {
       .catch(e => { setGoogleEvents([]); setGoogleError(e.response?.data?.detail || e.message) })
   }, [view, year, month, weekStart])
 
-  const eventMap = useMemo(() => buildEventMap(filteredContacts, googleEvents), [filteredContacts, googleEvents])
+  const eventMap = useMemo(() => buildEventMap(filteredContacts, googleEvents, applications, todos), [filteredContacts, googleEvents, applications, todos])
 
   // ── Month navigation ──
   function prevMonth() {

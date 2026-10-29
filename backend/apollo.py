@@ -30,10 +30,15 @@ def _post(endpoint: str, payload: dict) -> dict:
     return res.json()
 
 
-def search_people(firm: str, titles: list[str] = None, seniorities: list[str] = None,
-                  locations: list[str] = None, page: int = 1, per_page: int = 25) -> dict:
-    """Free search (no credits). Last names are obfuscated and emails are not returned."""
-    payload = {"q_organization_name": firm, "page": page, "per_page": per_page}
+def search_people(firm: str = "", titles: list[str] = None, seniorities: list[str] = None,
+                  locations: list[str] = None, page: int = 1, per_page: int = 25, name: str = "") -> dict:
+    """Free search (no credits) by firm, a person's name, or both. Last names in results are
+    obfuscated and emails are not returned."""
+    payload = {"page": page, "per_page": per_page}
+    if firm:
+        payload["q_organization_name"] = firm
+    if name:
+        payload["q_keywords"] = name
     if titles:
         payload["person_titles"] = titles
     if seniorities:
