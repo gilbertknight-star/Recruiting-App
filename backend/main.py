@@ -15,7 +15,7 @@ from contacts import (
 )
 import apollo
 import gcal
-from email_gen import generate_email, generate_batch, compose_free
+from email_gen import generate_email, generate_batch, compose_free, apply_font
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
@@ -31,7 +31,8 @@ def _prepare_scheduled(email: dict) -> dict:
     """Runs just before a scheduled email sends, so its availability reflects the calendar at that moment."""
     user_id = email.get("user_id", "")
     tz_id = location_to_timezone(email.get("location", ""))
-    return {**email, "body": gcal.fill_availability(email["body"], user_id, get_settings(user_id), tz_id)}
+    settings = get_settings(user_id)
+    return {**email, "body": apply_font(gcal.fill_availability(email["body"], user_id, settings, tz_id), settings)}
 
 
 def _scheduled_sent(email: dict, result: dict):
@@ -330,7 +331,7 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             "user_id": user.id,
             "to": c["email"],
             "subject": c.get("generated_subject", ""),
-            "body": gcal.fill_availability(c["generated_email"], user.id, settings, location_to_timezone(c.get("location", ""))),
+            "body": apply_font(gcal.fill_availability(c["generated_email"], user.id, settings, location_to_timezone(c.get("location", ""))), settings),
             "firm": c.get("firm", ""),
             "attachment_paths": [p for p in settings.get("attachments", []) if p],
             "bcc": (settings.get("bcc_email") or "").strip() or None,
@@ -379,7 +380,7 @@ def send_test_email(req: TestSendRequest, user=Depends(get_current_user)):
         service=service,
         to=recipient,
         subject=f"[TEST] {req.subject}",
-        body=gcal.fill_availability(req.body, user.id, settings, settings.get("avail_timezone") or "America/Los_Angeles"),
+        body=apply_font(gcal.fill_availability(req.body, user.id, settings, settings.get("avail_timezone") or "America/Los_Angeles"), settings),
         firm="",
         attachment_paths=[p for p in settings.get("attachments", []) if p],
     )
@@ -630,6 +631,8 @@ class SettingsUpdate(BaseModel):
     avail_days_ahead: Optional[int] = None
     avail_min_minutes: Optional[int] = None
     avail_max_days: Optional[int] = None
+    email_font: Optional[str] = None
+    email_font_size: Optional[int] = None
 
 
 @app.get("/settings")

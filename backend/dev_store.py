@@ -109,6 +109,8 @@ _settings: dict = {
     "bcc_email": "",
     "test_mode": False,
     "live_availability": False,
+    "email_font": "Arial",
+    "email_font_size": 14,
     "availability": "Monday through Friday, 9am to 5pm PST",
     "linkedin_url": "https://www.linkedin.com/in/gilbert-knight",
     "signature": "<div style=\"font-family:inherit;font-size:inherit;line-height:1.5\"><strong>Gilbert Knight</strong><br>Senior Analyst | University of Oregon Investment Group<br>Research Analyst | University of Oregon Quant Group<br>University of Oregon '29<br>(503) 858-4401 &middot; <a href=\"mailto:gilbert.knight@gmail.com\">gilbert.knight@gmail.com</a> &middot; <a href=\"https://www.linkedin.com/in/gilbert-knight\" target=\"_blank\">LinkedIn</a></div>",

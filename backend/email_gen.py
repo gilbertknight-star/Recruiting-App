@@ -35,26 +35,66 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
     )
 
 
+# Font choices offered in Settings, with web-safe fallbacks; Arial matches Gmail's default compose font
+FONT_STACKS = {
+    "Arial": "Arial,Helvetica,sans-serif",
+    "Times New Roman": "'Times New Roman',Times,serif",
+    "Georgia": "Georgia,'Times New Roman',serif",
+    "Garamond": "Garamond,'Times New Roman',serif",
+    "Calibri": "Calibri,Arial,sans-serif",
+    "Verdana": "Verdana,Geneva,sans-serif",
+    "Helvetica": "Helvetica,Arial,sans-serif",
+}
+P_STYLE = "margin:0 0 12px 0"
+
+
+def body_style(settings: dict) -> str:
+    font = FONT_STACKS.get(settings.get("email_font") or "Arial", FONT_STACKS["Arial"])
+    size = settings.get("email_font_size") or 14
+    return f"font-family:{font};font-size:{size}px;line-height:1.5;color:#222"
+
+
+def apply_font(body: str, settings: dict) -> str:
+    """Restyle the email's outer wrapper with the current font setting, so drafts written
+    before a font change still send in the chosen font."""
+    import re
+    return re.sub(r'^(\s*<div style=")[^"]*font-family:[^"]*(")', lambda m: m.group(1) + body_style(settings) + m.group(2), body, count=1)
+
+
 def _plain_to_html(text: str) -> str:
     paragraphs = text.strip().split('\n\n')
-    return ''.join(f'<p style="margin:0 0 12px 0">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs)
+    return ''.join(f'<p style="{P_STYLE}">{p.replace(chr(10), "<br>")}</p>' for p in paragraphs)
+
+
+def clean_signature(sig: str, linkedin_url: str) -> str:
+    """Tidy the saved signature: drop blank lines at the edges, remove paragraph margins,
+    and make sure there's a clickable LinkedIn link."""
+    import re
+    sig = sig.strip()
+    if not sig:
+        return ""
+    # Blank lines right after the opening tag or right before the closing tag
+    sig = re.sub(r'^(<(?:p|div)[^>]*>)(\s*<br\s*/?>)+', r'\1', sig)
+    sig = re.sub(r'(<br\s*/?>\s*)+(</(?:p|div)>)$', r'\2', sig)
+    # A wrapping <p> brings default margins that push the signature away from the "--"
+    if re.match(r'^<p(\s[^>]*)?>', sig) and sig.endswith('</p>'):
+        sig = re.sub(r'^<p(\s[^>]*)?>', '<div style="margin:0">', sig)[:-4] + '</div>'
+    if linkedin_url:
+        if re.search(r'linkedin\.com/in/', sig):
+            sig = re.sub(r'href="https?://(?:www\.)?linkedin\.com/in/[^"]*"', f'href="{linkedin_url}"', sig)
+        else:
+            link = f'<br><a href="{linkedin_url}" style="color:#1a73e8;text-decoration:none">LinkedIn</a>'
+            sig = sig[:-6] + link + '</div>' if sig.endswith('</div>') else sig + link
+    return sig
 
 
 def append_signature(body: str, settings: dict) -> str:
-    sig = settings.get("signature", "").strip()
-    linkedin_url = settings.get("linkedin_url", "").strip()
-    if sig and linkedin_url:
-        import re
-        sig = re.sub(
-            r'href="https?://(?:www\.)?linkedin\.com/in/[^"]*"',
-            f'href="{linkedin_url}"',
-            sig,
-        )
+    sig = clean_signature(settings.get("signature") or "", (settings.get("linkedin_url") or "").strip())
     if not body.strip().startswith('<'):
         body = _plain_to_html(body)
-    sep = '<p style="margin:16px 0 4px 0;color:#666">--</p>'
+    sep = '<div style="margin:20px 0 4px 0;color:#888">--</div>'
     content = f"{body}{sep}{sig}" if sig else body
-    return f'<div style="font-family:sans-serif;font-size:14px;line-height:1.6">{content}</div>'
+    return f'<div style="{body_style(settings)}">{content}</div>'
 
 
 def generate_email(contact: dict, templates: dict, settings: dict) -> dict:
@@ -78,7 +118,18 @@ def with_availability_placeholder(text: str, settings: dict) -> str:
     if not settings.get("live_availability"):
         return text
     from gcal import AVAILABILITY_TOKEN
+    paragraphs = text.strip().split("\n\n")
+    # Keep "Best,\nGilbert" (or similar) as the last thing before the signature
+    if len(paragraphs) > 1 and SIGN_OFF.match(paragraphs[-1].strip()):
+        return "\n\n".join(paragraphs[:-1] + [AVAILABILITY_TOKEN, paragraphs[-1]])
     return f"{text}\n\n{AVAILABILITY_TOKEN}"
+
+
+import re as _re
+SIGN_OFF = _re.compile(
+    r"^(best|best regards|warm regards|kind regards|regards|thanks|thank you|many thanks|sincerely|cheers|all the best)[,!.]?(\s*\n.*)?$",
+    _re.IGNORECASE | _re.DOTALL,
+)
 
 
 def compose_free(prompt: str, context: str) -> dict:

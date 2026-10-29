@@ -131,23 +131,40 @@ def free_slots(settings: dict, busy: list[tuple[datetime, datetime]], now: datet
 
 
 def _fmt_time(dt: datetime) -> str:
-    return dt.strftime("%I:%M%p").lstrip("0").lower()
+    """'9am', '12:30pm'"""
+    return dt.strftime("%I:%M%p").lstrip("0").lower().replace(":00", "")
+
+
+def _fmt_range(s: datetime, e: datetime) -> str:
+    """'10am–12pm', '9–11:30am' (drop the first am/pm when both match)"""
+    start, end = _fmt_time(s), _fmt_time(e)
+    if start[-2:] == end[-2:]:
+        start = start[:-2]
+    return f"{start}–{end}"
+
+
+P_STYLE = "margin:0 0 12px 0"
 
 
 def format_availability(slots: list[tuple[datetime, datetime]], recipient_tz: str, max_days: int = 4) -> str:
-    """HTML lines like 'Tue 11/4: 10:00am–12:00pm, 3:00–5:00pm' in the recipient's time zone."""
+    """HTML paragraphs: an intro line, one indented line per day ('Tuesday, Nov 4: 10am–12pm, 3–5pm'),
+    and a closing line, in the recipient's time zone."""
     tz = pytz.timezone(recipient_tz)
     by_day: dict = {}
     for start, end in slots:
         s, e = start.astimezone(tz), end.astimezone(tz)
-        by_day.setdefault(s.date(), []).append(f"{_fmt_time(s)}–{_fmt_time(e)}")
+        by_day.setdefault(s.date(), []).append(_fmt_range(s, e))
     days = sorted(by_day)[:max_days]
     if not days:
         return ""
-    lines = [f"{d.strftime('%a')} {d.month}/{d.day}: {', '.join(by_day[d])}" for d in days]
     label = TZ_NAMES.get(recipient_tz, recipient_tz)
-    return (f"Here are some times I'm free over the next week ({label}):<br>" + "<br>".join(lines)
-            + "<br>Happy to work around your schedule if none of these work.")
+    day_lines = "".join(
+        f'<div style="margin:0 0 6px 0">&bull;&nbsp; {d.strftime("%A, %b")} {d.day}: {", ".join(by_day[d])}</div>'
+        for d in days
+    )
+    return (f'<p style="{P_STYLE}">Here are some times I\'m free over the next week ({label}):</p>'
+            f'<div style="margin:0 0 12px 12px">{day_lines}</div>'
+            f'<p style="{P_STYLE}">Happy to work around your schedule if none of these work.</p>')
 
 
 def fill_availability(body: str, user_id: str, settings: dict, recipient_tz: str) -> str:
@@ -163,5 +180,16 @@ def fill_availability(body: str, user_id: str, settings: dict, recipient_tz: str
         print(f"[availability] calendar lookup failed, using written availability: {e}")
     if not text:
         written = (settings.get("availability") or "").strip()
-        text = f"I am generally available {written}." if written else ""
-    return body.replace(AVAILABILITY_TOKEN, text)
+        text = f'<p style="{P_STYLE}">I am generally available {written}.</p>' if written else ""
+    # The placeholder sits in its own paragraph; swap the whole paragraph so the block's spacing is ours
+    import re
+    token = re.escape(AVAILABILITY_TOKEN)
+    # Older drafts put the placeholder after the sign-off ("Best,<br>Gilbert"); move it in front
+    sign_off = (r"(?:best|best regards|warm regards|kind regards|regards|thanks|thank you|many thanks|"
+                r"sincerely|cheers|all the best)[,!.]?")
+    body = re.sub(
+        rf'(<p[^>]*>\s*{sign_off}\s*(?:<br\s*/?>[^<]*)?</p>)(\s*<p[^>]*>\s*{token}\s*</p>)',
+        r"\2\1", body, flags=re.IGNORECASE,
+    )
+    replaced, n = re.subn(rf'<p[^>]*>\s*{token}\s*</p>', lambda _: text, body)
+    return replaced if n else body.replace(AVAILABILITY_TOKEN, text)

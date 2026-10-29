@@ -239,7 +239,32 @@ export default function Settings() {
 
         {/* Right column — Signature */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <h3 style={{ fontWeight: 500 }}>Email Signature</h3>
+          <h3 style={{ fontWeight: 500 }}>Email Font</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+            <div>
+              <label style={lbl}>Font</label>
+              <select value={settings.email_font || 'Arial'} onChange={e => set('email_font', e.target.value)}>
+                {Object.keys(FONT_STACKS).map(f => <option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+            <div>
+              <label style={lbl}>Size</label>
+              <select value={settings.email_font_size || 14} onChange={e => set('email_font_size', Number(e.target.value))}>
+                {[12, 13, 14, 15, 16].map(s => <option key={s} value={s}>{s}px</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{
+            background: '#fff', color: '#222', borderRadius: 'var(--radius)', padding: 14,
+            fontFamily: FONT_STACKS[settings.email_font || 'Arial'], fontSize: settings.email_font_size || 14, lineHeight: 1.5,
+          }}>
+            Hello Hannah,<br />My name is Gilbert Knight, and I'm a freshman at the University of Oregon.
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: -8 }}>
+            Applies to every email when it sends, including drafts you've already generated.
+          </p>
+
+          <h3 style={{ fontWeight: 500, marginTop: 8 }}>Email Signature</h3>
           <div>
             <label style={lbl}>Signature (appended to every email)</label>
             <RichTextEditor
@@ -260,6 +285,17 @@ export default function Settings() {
 }
 
 const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 4, fontWeight: 500 }
+
+// Keep in sync with FONT_STACKS in backend/email_gen.py
+const FONT_STACKS = {
+  'Arial': "Arial, Helvetica, sans-serif",
+  'Times New Roman': "'Times New Roman', Times, serif",
+  'Georgia': "Georgia, 'Times New Roman', serif",
+  'Garamond': "Garamond, 'Times New Roman', serif",
+  'Calibri': "Calibri, Arial, sans-serif",
+  'Verdana': "Verdana, Geneva, sans-serif",
+  'Helvetica': "Helvetica, Arial, sans-serif",
+}
 
 const TIMEZONES = [
   ['America/Los_Angeles', 'Pacific Time'],
