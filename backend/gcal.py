@@ -8,6 +8,8 @@ from gmail import get_google_credentials
 
 # Drafts carry this line; it's replaced with live availability when the email is sent
 AVAILABILITY_TOKEN = "[[AVAILABILITY: filled in from your Google Calendar when sent]]"
+# Follow-ups use a one-sentence version instead of the full list
+AVAILABILITY_SHORT_TOKEN = "[[AVAILABILITY (short): filled in from your Google Calendar when sent]]"
 
 TZ_NAMES = {
     "America/New_York": "Eastern Time",
@@ -229,29 +231,49 @@ def format_availability(slots: list[tuple[datetime, datetime]], recipient_tz: st
             f'<p style="{P_STYLE}">Happy to work around your schedule if none of these work.</p>')
 
 
+def format_availability_short(slots: list[tuple[datetime, datetime]], recipient_tz: str) -> str:
+    """One sentence for follow-ups: 'If it helps, I'm free Thursday 10/29 at 12pm or Friday 10/30 at 1pm ET.'"""
+    tz = pytz.timezone(recipient_tz)
+    firsts: dict = {}
+    for start, _ in slots:
+        s = start.astimezone(tz)
+        firsts.setdefault(s.date(), s)
+    picks = [firsts[d] for d in sorted(firsts)[:2]]
+    if not picks:
+        return ""
+    times = " or ".join(f"{t.strftime('%A')} {t.month}/{t.day} at {_fmt_time(t)}" for t in picks)
+    label = TZ_NAMES.get(recipient_tz, recipient_tz).replace(" Time", "")
+    return f"<p style=\"{P_STYLE}\">If it helps, I'm free {times} ({label} time), or whenever works for you.</p>"
+
+
 def fill_availability(body: str, user_id: str, settings: dict, recipient_tz: str) -> str:
-    """Replace the availability placeholder with live times; fall back to the written availability if the calendar fails."""
-    if AVAILABILITY_TOKEN not in body:
+    """Replace the availability placeholders with live times; fall back to the written availability if the calendar fails."""
+    import re
+    if AVAILABILITY_TOKEN not in body and AVAILABILITY_SHORT_TOKEN not in body:
         return body
-    text = ""
+    slots = None
     try:
         now = datetime.utcnow()
         busy = _busy_intervals(user_id, now, now + timedelta(days=settings.get("avail_days_ahead", 7) + 2), settings)
-        text = format_availability(free_slots(settings, busy), recipient_tz, settings.get("avail_max_days", 4))
+        slots = free_slots(settings, busy)
     except Exception as e:
         print(f"[availability] calendar lookup failed, using written availability: {e}")
-    if not text:
-        written = (settings.get("availability") or "").strip()
-        text = f'<p style="{P_STYLE}">I am generally available {written}.</p>' if written else ""
-    # The placeholder sits in its own paragraph; swap the whole paragraph so the block's spacing is ours
-    import re
-    token = re.escape(AVAILABILITY_TOKEN)
+    written = (settings.get("availability") or "").strip()
+    fallback = f'<p style="{P_STYLE}">I am generally available {written}.</p>' if written else ""
+    full = (format_availability(slots, recipient_tz, settings.get("avail_max_days", 4)) if slots else "") or fallback
+    short = (format_availability_short(slots, recipient_tz) if slots else "") or fallback
+
     # Older drafts put the placeholder after the sign-off ("Best,<br>Gilbert"); move it in front
     sign_off = (r"(?:best|best regards|warm regards|kind regards|regards|thanks|thank you|many thanks|"
                 r"sincerely|cheers|all the best)[,!.]?")
-    body = re.sub(
-        rf'(<p[^>]*>\s*{sign_off}\s*(?:<br\s*/?>[^<]*)?</p>)(\s*<p[^>]*>\s*{token}\s*</p>)',
-        r"\2\1", body, flags=re.IGNORECASE,
-    )
-    replaced, n = re.subn(rf'<p[^>]*>\s*{token}\s*</p>', lambda _: text, body)
-    return replaced if n else body.replace(AVAILABILITY_TOKEN, text)
+    for token_text, text in ((AVAILABILITY_TOKEN, full), (AVAILABILITY_SHORT_TOKEN, short)):
+        token = re.escape(token_text)
+        body = re.sub(
+            rf'(<p[^>]*>\s*{sign_off}\s*(?:<br\s*/?>[^<]*)?</p>)(\s*<p[^>]*>\s*{token}\s*</p>)',
+            r"\2\1", body, flags=re.IGNORECASE,
+        )
+        # The placeholder sits in its own paragraph; swap the whole paragraph so the block's spacing is ours
+        body, n = re.subn(rf'<p[^>]*>\s*{token}\s*</p>', lambda _: text, body)
+        if not n:
+            body = body.replace(token_text, text)
+    return body

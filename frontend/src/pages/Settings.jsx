@@ -108,6 +108,18 @@ export default function Settings() {
                 Checked calendars show on the Calendar page and count as busy for live availability. Coffee chats you set in the app are added to your main calendar.
               </p>
             </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={lbl}>Apollo cost per credit ($)</label>
+              <input
+                type="number" min={0} step="0.01"
+                value={settings.apollo_cost_per_credit ?? 0}
+                onChange={e => set('apollo_cost_per_credit', Number(e.target.value))}
+                style={{ width: 140 }}
+              />
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                Your plan's price divided by its credits. Used to show Apollo spend in dollars on the Dashboard.
+              </p>
+            </div>
           </div>
 
           <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>

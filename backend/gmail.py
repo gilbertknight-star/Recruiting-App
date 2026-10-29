@@ -14,6 +14,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from db import supabase, DEV_MODE
+from usage import log_claude
 
 DEV_USER_ID = "dev-user"
 
@@ -96,7 +97,28 @@ def get_or_create_label(service, label_name: str) -> str:
     return created["id"]
 
 
-def send_email(service, to: str, subject: str, body: str, firm: str, attachment_paths: list = None, scheduled_time: datetime = None, bcc: str = None) -> dict:
+def thread_reply_info(service, thread_id: str) -> dict | None:
+    """What a reply needs to land in an existing Gmail thread: the last message's Message-ID and the subject."""
+    try:
+        thread = service.users().threads().get(
+            userId="me", id=thread_id, format="metadata", metadataHeaders=["Message-ID", "Subject"],
+        ).execute()
+    except Exception:
+        return None
+    messages = thread.get("messages", [])
+    if not messages:
+        return None
+    headers = {h["name"].lower(): h["value"] for h in messages[-1].get("payload", {}).get("headers", [])}
+    subject = headers.get("subject", "")
+    return {
+        "thread_id": thread_id,
+        "message_id": headers.get("message-id"),
+        "subject": subject if subject.lower().startswith("re:") else f"Re: {subject}",
+    }
+
+
+def send_email(service, to: str, subject: str, body: str, firm: str, attachment_paths: list = None, scheduled_time: datetime = None, bcc: str = None, reply_to: dict = None) -> dict:
+    """reply_to: thread_reply_info() result, to send as a reply inside that thread."""
     recruiting_label_id = get_or_create_label(service, "Recruiting")
     firm_label_id = get_or_create_label(service, f"Recruiting/{firm}" if firm else "Recruiting/Other")
 
@@ -112,7 +134,10 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
     msg["To"] = to
     if bcc:
         msg["Bcc"] = bcc  # Gmail delivers to Bcc and strips the header, so the recipient never sees it
-    msg["Subject"] = subject
+    msg["Subject"] = reply_to["subject"] if reply_to else subject
+    if reply_to and reply_to.get("message_id"):
+        msg["In-Reply-To"] = reply_to["message_id"]
+        msg["References"] = reply_to["message_id"]
     alt = MIMEMultipart('alternative')
     alt.attach(MIMEText(html_body, "html"))
     msg.attach(alt)
@@ -131,6 +156,8 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
 
     raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
     send_body = {"raw": raw, "labelIds": [recruiting_label_id, firm_label_id]}
+    if reply_to:
+        send_body["threadId"] = reply_to["thread_id"]
 
     result = service.users().messages().send(userId="me", body=send_body).execute()
     return {"message_id": result["id"], "thread_id": result.get("threadId")}
@@ -263,6 +290,7 @@ Respond with only the JSON object."""
                 max_tokens=300,
                 messages=[{"role": "user", "content": prompt}],
             )
+            log_claude(resp, "import Gmail folder")
             raw = resp.content[0].text.strip()
             # Strip markdown code fences if present
             raw = re.sub(r"^```json\s*|^```\s*|```$", "", raw, flags=re.MULTILINE).strip()

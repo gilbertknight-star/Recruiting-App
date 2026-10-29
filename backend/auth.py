@@ -2,6 +2,7 @@ import os
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from db import supabase, DEV_MODE
+from usage import current_user_id
 
 security = HTTPBearer(auto_error=not DEV_MODE)
 
@@ -18,6 +19,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         response = supabase.auth.get_user(credentials.credentials)
         if not response or not response.user:
             raise HTTPException(status_code=401, detail="Invalid token")
+        current_user_id.set(response.user.id)  # lets usage logging attribute API spend to this user
         return response.user
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

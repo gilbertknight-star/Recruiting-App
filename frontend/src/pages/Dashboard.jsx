@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { getStats, scanReplies, getContacts, getScheduled } from '../api/client'
+import { getStats, scanReplies, getContacts, getScheduled, cancelScheduled, cancelAllScheduled } from '../api/client'
 import DeadlinesTodos from '../components/DeadlinesTodos'
+import FollowUps from '../components/FollowUps'
+import UsageCard from '../components/UsageCard'
 
 const STATUS_COLOR = {
   'Cold':              '#64748b',
@@ -26,6 +28,7 @@ export default function Dashboard() {
   const [contacts,  setContacts]  = useState([])
   const [scanning,  setScanning]  = useState(false)
   const [scheduled, setScheduled] = useState([])
+  const [confirmCancelAll, setConfirmCancelAll] = useState(false)
 
   useEffect(() => {
     getStats().then(setStats).catch(() => setStats({}))
@@ -53,14 +56,6 @@ export default function Dashboard() {
     { label: 'Referral',   value: stats?.closed,            color: '#34d399' },
   ]
 
-  const followUpNeeded = useMemo(() =>
-    contacts
-      .filter(c => c.follow_up_due && new Date(c.follow_up_due) <= new Date())
-      .sort((a, b) => new Date(a.follow_up_due) - new Date(b.follow_up_due))
-      .slice(0, 8),
-    [contacts]
-  )
-
   const recentActivity = useMemo(() =>
     [...contacts]
       .filter(c => c.last_contacted)
@@ -68,6 +63,22 @@ export default function Dashboard() {
       .slice(0, 8),
     [contacts]
   )
+
+  function refreshAfterCancel() {
+    getScheduled().then(r => setScheduled(r.queued || [])).catch(() => {})
+    getStats().then(setStats).catch(() => {})
+    getContacts().then(setContacts).catch(() => {})
+  }
+
+  async function handleCancel(id) {
+    setScheduled(s => s.filter(e => e.id !== id))
+    try { await cancelScheduled(id) } finally { refreshAfterCancel() }
+  }
+
+  async function handleCancelAll() {
+    setConfirmCancelAll(false)
+    try { await cancelAllScheduled() } finally { refreshAfterCancel() }
+  }
 
   async function handleScan() {
     setScanning(true)
@@ -152,74 +163,61 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {/* ── API usage & cost ───────────────────────────────────── */}
+      <UsageCard />
+
       {/* ── Scheduled queue ─────────────────────────────────────── */}
       {scheduled.length > 0 && (
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <span style={{ fontWeight: 600, fontSize: 13 }}>Scheduled to Send</span>
-            <span style={{ fontSize: 11, color: '#c084fc', fontWeight: 600 }}>{scheduled.length} queued</span>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <span style={{ fontSize: 11, color: '#c084fc', fontWeight: 600 }}>{scheduled.length} queued</span>
+              {confirmCancelAll ? (
+                <>
+                  <span style={{ fontSize: 12 }}>Cancel all {scheduled.length}?</span>
+                  <button className="btn-secondary btn-sm" onClick={() => setConfirmCancelAll(false)}>Keep</button>
+                  <button className="btn-danger btn-sm" onClick={handleCancelAll}>Cancel all</button>
+                </>
+              ) : (
+                <button className="btn-secondary btn-sm" onClick={() => setConfirmCancelAll(true)}>Cancel all</button>
+              )}
+            </div>
           </div>
           <table>
             <thead>
-              <tr><th>Recipient</th><th>Subject</th><th>Sends At (your time)</th></tr>
+              <tr><th>Recipient</th><th>Subject</th><th>Sends At (your time)</th><th style={{ width: 80 }}></th></tr>
             </thead>
             <tbody>
-              {scheduled.map((e, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 500 }}>{e.to}</td>
+              {scheduled.map(e => (
+                <tr key={e.id}>
+                  <td style={{ fontWeight: 500 }}>
+                    {e.to}
+                    {e.test && <span className="badge" style={{ marginLeft: 8, background: 'var(--surface2)', color: 'var(--yellow)' }}>Test</span>}
+                  </td>
                   <td style={{ color: 'var(--muted)' }}>{e.subject}</td>
                   <td style={{ color: '#c084fc', fontSize: 12 }}>
-                    {new Date(e.send_at + 'Z').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    {new Date(/[zZ]|[+-]\d\d:\d\d$/.test(e.send_at) ? e.send_at : e.send_at + 'Z')
+                      .toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                  </td>
+                  <td>
+                    <button className="btn-secondary btn-sm" onClick={() => handleCancel(e.id)}>Cancel</button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
+            Cancelling stops the email and puts the contact back to Cold so you can send it again later. The draft is kept.
+          </p>
         </div>
       )}
 
       {/* ── Follow-ups + Recent activity ─────────────────────────── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
-        {/* Follow-ups overdue */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <span style={{ fontWeight: 600, fontSize: 13 }}>Follow-Up Needed</span>
-            {followUpNeeded.length > 0 && (
-              <span style={{ fontSize: 11, color: 'var(--red)', fontWeight: 600 }}>
-                {followUpNeeded.length} overdue
-              </span>
-            )}
-          </div>
-          {followUpNeeded.length === 0 ? (
-            <div style={{ color: 'var(--muted)', fontSize: 13, padding: '20px 0', textAlign: 'center' }}>
-              All caught up
-            </div>
-          ) : (
-            <table>
-              <thead>
-                <tr><th>Name</th><th>Firm</th><th>Status</th><th>Due</th></tr>
-              </thead>
-              <tbody>
-                {followUpNeeded.map(c => (
-                  <tr key={c.id}>
-                    <td style={{ fontWeight: 500 }}>{c.name}</td>
-                    <td style={{ color: 'var(--muted)' }}>{c.firm}</td>
-                    <td>
-                      <span className="badge" style={{
-                        background: (STATUS_COLOR[c.status] || '#64748b') + '22',
-                        color: STATUS_COLOR[c.status] || '#64748b',
-                      }}>{c.status}</span>
-                    </td>
-                    <td style={{ color: 'var(--red)', fontSize: 12 }}>
-                      {new Date(c.follow_up_due + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {/* Follow-ups due */}
+        <FollowUps contacts={contacts} onChanged={() => getContacts().then(setContacts)} />
 
         {/* Recent activity */}
         <div className="card">

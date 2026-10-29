@@ -57,6 +57,22 @@ DEFAULT_TEMPLATES = [
         "tone": "warm and collegial",
         "max_words": 120,
     },
+    # Follow-ups. Sent as replies in the original Gmail thread when there is one, so the subject
+    # below is only used when there's no earlier email to reply to.
+    {
+        "tier": "followup_cold",
+        "prompt": "Write a short, polite follow-up email from Gilbert Knight to {name} at {firm}. They haven't replied to his networking email from {days_since} days ago; this is follow-up number {followup_number}. Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nOne or two friendly sentences bumping his earlier note, saying he'd still love to hear about their path and experience at {firm} and would be grateful for even 15 minutes.\n\nBest,\nGilbert\n\nDo not apologize repeatedly, do not guilt-trip, do not mention scheduling flexibility, do not add a subject line, and word it differently from a generic template.",
+        "subject": "Following up - Gilbert Knight",
+        "tone": "polite and brief",
+        "max_words": 70,
+    },
+    {
+        "tier": "followup_warm",
+        "prompt": "Write a warm reconnect email from Gilbert Knight to {name} at {firm}, whom he has already spoken with. {notes_line} Output ONLY the email body with blank lines between paragraphs:\n\nHello {name},\n\nThank them again for taking the time to chat, mentioning something specific from the notes if there is anything.\n\nA one-sentence update on what Gilbert has been working on in recruiting and the University of Oregon Investment Group.\n\nAsk whether they'd be open to catching up briefly again in the coming weeks.\n\nBest,\nGilbert\n\nDo not add a subject line.",
+        "subject": "Checking in - Gilbert Knight",
+        "tone": "warm and appreciative",
+        "max_words": 120,
+    },
 ]
 
 

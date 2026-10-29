@@ -56,6 +56,7 @@ export const apolloSaved = (params) => api.post('/apollo/saved', params).then(r 
 export const apolloImportSaved = (body) => api.post('/apollo/saved/import', body).then(r => r.data)
 
 export const getCalendarEvents = (start, end) => api.get('/calendar/events', { params: { start, end } }).then(r => r.data)
+export const getUsage = () => api.get('/usage').then(r => r.data)
 export const getApplications = () => api.get('/applications').then(r => r.data)
 export const createApplication = (app) => api.post('/applications', app).then(r => r.data)
 export const updateApplication = (id, updates) => api.patch(`/applications/${id}`, updates).then(r => r.data)
@@ -68,6 +69,10 @@ export const deleteTodo = (id) => api.delete(`/todos/${id}`).then(r => r.data)
 export const getCalendarList =() => api.get('/calendar/list').then(r => r.data)
 export const getAvailabilityPreview =(location = '') => api.get('/calendar/availability-preview', { params: { location } }).then(r => r.data)
 
+export const generateFollowups = (contactIds) => api.post('/followups/generate', { contact_ids: contactIds }).then(r => r.data)
+export const sendFollowups = (contactIds) => api.post('/followups/send', { contact_ids: contactIds }).then(r => r.data)
+export const cancelScheduled = (id) => api.delete(`/scheduled/${id}`).then(r => r.data)
+export const cancelAllScheduled = () => api.post('/scheduled/cancel-all').then(r => r.data)
 export const getScheduled =() => api.get('/scheduled').then(r => r.data)
 export const browseFile = () => api.get('/browse-file').then(r => r.data)
 export const sendTestEmail = (subject, body) => api.post('/send-test', { subject, body }).then(r => r.data)

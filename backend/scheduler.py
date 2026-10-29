@@ -8,6 +8,7 @@ In DEV_MODE (no Supabase) the queue is kept in memory instead.
 import os
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 
 from db import supabase, DEV_MODE
@@ -39,7 +40,7 @@ def enqueue(email: dict, send_at: datetime):
     """email needs user_id; its "id" is the contact id. send_at is UTC (naive or aware)."""
     if DEV_MODE:
         with _lock:
-            _memory_queue.append({"send_at": _utc(send_at), **email})
+            _memory_queue.append({"send_at": _utc(send_at), "_row_id": str(uuid.uuid4()), **email})
         return
     payload = {k: v for k, v in email.items() if k not in ("scheduled_time",)}
     supabase.table("scheduled_emails").insert({
@@ -50,13 +51,34 @@ def enqueue(email: dict, send_at: datetime):
     }).execute()
 
 
+def _summary(row_id: str, send_at: str, payload: dict) -> dict:
+    return {
+        "id": row_id, "send_at": send_at, "to": payload.get("to"), "subject": payload.get("subject"),
+        "contact_id": payload.get("id"), "test": bool(payload.get("test")),
+    }
+
+
 def get_scheduled(user_id: str) -> list[dict]:
     if DEV_MODE:
         with _lock:
-            return [{"send_at": e["send_at"].isoformat(), "to": e["to"], "subject": e["subject"]} for e in _memory_queue]
-    rows = supabase.table("scheduled_emails").select("send_at, payload") \
+            return [_summary(e["_row_id"], e["send_at"].isoformat(), e) for e in _memory_queue]
+    rows = supabase.table("scheduled_emails").select("id, send_at, payload") \
         .eq("user_id", user_id).eq("status", "pending").order("send_at").execute().data or []
-    return [{"send_at": r["send_at"], "to": r["payload"].get("to"), "subject": r["payload"].get("subject")} for r in rows]
+    return [_summary(r["id"], r["send_at"], r["payload"]) for r in rows]
+
+
+def cancel(user_id: str, row_id: str) -> dict | None:
+    """Cancel a pending scheduled email. Returns its payload, or None if it already went out or isn't the user's."""
+    if DEV_MODE:
+        with _lock:
+            for e in _memory_queue:
+                if e["_row_id"] == row_id:
+                    _memory_queue.remove(e)
+                    return e
+        return None
+    res = supabase.table("scheduled_emails").update({"status": "cancelled"}) \
+        .eq("id", row_id).eq("user_id", user_id).eq("status", "pending").execute()
+    return res.data[0]["payload"] if res.data else None
 
 
 def queue_size(user_id: str) -> int:

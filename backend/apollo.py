@@ -1,6 +1,7 @@
 import os
 import httpx
 from dotenv import load_dotenv
+from usage import log_apollo
 
 load_dotenv()
 
@@ -166,6 +167,7 @@ def reveal_by_linkedin(url: str) -> dict | None:
     p = _post("people/match", {"linkedin_url": url, "reveal_personal_emails": False}).get("person")
     if not p:
         return None
+    log_apollo(1, "LinkedIn lookup")
     org = p.get("organization") or {}
     return {
         "apollo_id": p.get("id"),
@@ -190,6 +192,7 @@ def reveal_people(apollo_ids: list[str]) -> list[dict]:
             "details": [{"id": pid} for pid in batch],
             "reveal_personal_emails": False,
         })
+        log_apollo(sum(1 for p in data.get("matches") or [] if p), "Get contact info")
         for p in data.get("matches") or []:
             if not p:
                 continue

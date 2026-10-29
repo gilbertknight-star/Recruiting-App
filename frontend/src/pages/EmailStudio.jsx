@@ -9,6 +9,9 @@ const TIERS = [
   { key: 'n_a',              label: 'N/A',                  short: 'N/A' },
   { key: 'uoig_alum',        label: 'UOIG Alum',           short: 'UOIG', divider: true, color: '#a78bfa' },
   { key: 'uo_alum',          label: 'UO Alum',             short: 'UO',                  color: '#fb923c' },
+  // Follow-ups: picked automatically from the contact's status (no reply yet vs. already talked)
+  { key: 'followup_cold',    label: 'Follow-up: No reply',  short: 'No reply', divider: true, color: '#38bdf8' },
+  { key: 'followup_warm',    label: 'Follow-up: Reconnect', short: 'Reconnect',               color: '#34d399' },
 ]
 
 const VARIABLES = [
@@ -19,6 +22,8 @@ const VARIABLES = [
   ['{school_line}',       "I am a student at …"],
   ['{notes_line}',        "Notes you've added"],
   ['{availability_line}', "Your availability"],
+  ['{days_since}',        "Follow-ups: days since your last email"],
+  ['{followup_number}',   "Follow-ups: 1 for the first follow-up, 2 for the next…"],
 ]
 
 const DEFAULT_RULES = {

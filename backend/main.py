@@ -16,7 +16,7 @@ from contacts import (
 import apollo
 import gcal
 import tracker
-from email_gen import generate_email, generate_batch, compose_free, apply_font
+from email_gen import generate_email, generate_batch, compose_free, apply_font, _plain_text
 from timezone_lookup import location_to_timezone, local_to_utc
 from gmail import (
     get_auth_url, exchange_code, get_gmail_service,
@@ -43,16 +43,20 @@ def _scheduled_sent(email: dict, result: dict):
     update_contact(email["user_id"], email["id"], {"gmail_thread_id": (result or {}).get("thread_id")})
 
 
-def _scheduled_failed(email: dict, error: Exception):
-    """The contact was marked Contacted when scheduled; undo that so it doesn't look sent."""
+def _unmark_contacted(email: dict, note: str = ""):
+    """A scheduled contact is marked Contacted up front; put it back to Cold when the email never goes out."""
     if email.get("test") or not email.get("id"):
         return
     contact = next((c for c in get_all_contacts(email["user_id"]) if c["id"] == email["id"]), None)
     if contact and contact.get("status") == "Contacted" and not contact.get("gmail_thread_id"):
-        update_contact(email["user_id"], email["id"], {
-            "status": "Cold", "sent_at": None, "follow_up_due": None,
-            "notes": ((contact.get("notes") or "") + f"\n\nScheduled send failed: {error}").strip(),
-        })
+        update = {"status": "Cold", "sent_at": None, "follow_up_due": None}
+        if note:
+            update["notes"] = ((contact.get("notes") or "") + f"\n\n{note}").strip()
+        update_contact(email["user_id"], email["id"], update)
+
+
+def _scheduled_failed(email: dict, error: Exception):
+    _unmark_contacted(email, f"Scheduled send failed: {error}")
 
 @app.on_event("startup")
 def _start_scheduler():
@@ -129,6 +133,16 @@ async def upload_csv(file: UploadFile = File(...), user=Depends(get_current_user
 
 
 class ContactUpdate(BaseModel):
+    # Profile fields, so the Edit contact form can change them (e.g. adding an email later)
+    name: Optional[str] = None
+    email: Optional[str] = None
+    title: Optional[str] = None
+    firm: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    school: Optional[str] = None
+    location: Optional[str] = None
+    followup_email: Optional[str] = None
+    followup_subject: Optional[str] = None
     status: Optional[str] = None
     tier: Optional[str] = None
     alumni: Optional[str] = None
@@ -362,6 +376,84 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
             })
             increment_sent(user.id)
 
+    return results
+
+
+# --- Follow-ups ---
+
+class FollowupRequest(BaseModel):
+    contact_ids: list[str]
+
+
+@app.post("/followups/generate")
+def generate_followups(req: FollowupRequest, user=Depends(get_current_user)):
+    """Draft the next follow-up for each contact: 'no reply' or 'reconnect' depending on their status."""
+    from email_gen import generate_followup
+    templates = get_templates(user.id)
+    settings = get_settings(user.id)
+    contacts = {c["id"]: c for c in get_all_contacts(user.id)}
+    results = []
+    for cid in req.contact_ids:
+        c = contacts.get(cid)
+        if not c:
+            continue
+        try:
+            draft = generate_followup(c, templates, settings)
+            update_contact(user.id, cid, {"followup_email": draft["body"], "followup_subject": draft["subject"]})
+            results.append({"id": cid, "success": True, "kind": draft["kind"]})
+        except Exception as e:
+            results.append({"id": cid, "success": False, "error": str(e)})
+    return results
+
+
+@app.post("/followups/send")
+def send_followups(req: FollowupRequest, user=Depends(get_current_user)):
+    """Send drafted follow-ups as replies in each contact's Gmail thread (a new email if there isn't one),
+    then schedule the next one a week out. Test Mode sends them to you instead and changes nothing."""
+    import time
+    from gmail import thread_reply_info
+    settings = get_settings(user.id)
+    test_mode = bool(settings.get("test_mode"))
+    contacts = {c["id"]: c for c in get_all_contacts(user.id)}
+    service = get_gmail_service(user.id)
+    interval = 60.0 / max(1, settings.get("emails_per_minute") or 10)
+    results = []
+    for cid in req.contact_ids:
+        c = contacts.get(cid)
+        if not c or not c.get("followup_email") or not c.get("email"):
+            results.append({"id": cid, "success": False, "error": "No follow-up drafted or no email address"})
+            continue
+        email = {
+            "id": cid, "user_id": user.id, "to": c["email"],
+            "subject": c.get("followup_subject") or "Following up",
+            "body": apply_font(gcal.fill_availability(c["followup_email"], user.id, settings, location_to_timezone(c.get("location", ""))), settings),
+            "bcc": (settings.get("bcc_email") or "").strip() or None,
+        }
+        reply_to = None
+        if test_mode:
+            email = _redirect_for_test(email, user.email)
+        elif c.get("gmail_thread_id"):
+            reply_to = thread_reply_info(service, c["gmail_thread_id"])
+        try:
+            sent = send_email(
+                service=service, to=email["to"], subject=email["subject"], body=email["body"],
+                firm=c.get("firm", ""), bcc=email.get("bcc"), reply_to=reply_to,
+            )
+            if not test_mode:
+                update_contact(user.id, cid, {
+                    "followup_email": None, "followup_subject": None,
+                    # Last few follow-ups as plain text, so the next draft words itself differently
+                    "followup_history": ((c.get("followup_history") or []) + [_plain_text(c["followup_email"]).split("\n--")[0][:800]])[-5:],
+                    "followup_count": (c.get("followup_count") or 0) + 1,
+                    "last_followup_at": datetime.utcnow().isoformat(),
+                    "follow_up_due": (date.today() + timedelta(days=7)).isoformat(),
+                    "gmail_thread_id": c.get("gmail_thread_id") or sent.get("thread_id"),
+                })
+                increment_sent(user.id)
+            results.append({"id": cid, "success": True, "threaded": bool(reply_to), "test": test_mode})
+        except Exception as e:
+            results.append({"id": cid, "success": False, "error": str(e)})
+        time.sleep(interval)
     return results
 
 
@@ -617,6 +709,15 @@ def apollo_saved_import(req: ApolloSavedImportRequest, user=Depends(get_current_
     return _import_apollo_people(user.id, people)
 
 
+# --- API usage & cost ---
+
+@app.get("/usage")
+def api_usage(user=Depends(get_current_user)):
+    import usage
+    settings = get_settings(user.id)
+    return usage.summary(user.id, settings.get("apollo_cost_per_credit") or 0)
+
+
 # --- Application deadlines & to-dos ---
 
 class ApplicationIn(BaseModel):
@@ -736,6 +837,26 @@ def availability_preview(location: str = "", user=Depends(get_current_user)):
 
 # --- Scheduled queue status ---
 
+@app.delete("/scheduled/{scheduled_id}")
+def cancel_scheduled(scheduled_id: str, user=Depends(get_current_user)):
+    email = scheduler.cancel(user.id, scheduled_id)
+    if not email:
+        raise HTTPException(status_code=404, detail="That email already sent or was cancelled")
+    _unmark_contacted({**email, "user_id": user.id})
+    return {"cancelled": True}
+
+
+@app.post("/scheduled/cancel-all")
+def cancel_all_scheduled(user=Depends(get_current_user)):
+    cancelled = 0
+    for item in scheduler.get_scheduled(user.id):
+        email = scheduler.cancel(user.id, item["id"])
+        if email:
+            _unmark_contacted({**email, "user_id": user.id})
+            cancelled += 1
+    return {"cancelled": cancelled}
+
+
 @app.get("/scheduled")
 def get_scheduled(user=Depends(get_current_user)):
     queued = scheduler.get_scheduled(user.id)
@@ -770,6 +891,7 @@ class SettingsUpdate(BaseModel):
     email_font: Optional[str] = None
     email_font_size: Optional[int] = None
     calendar_ids: Optional[list[str]] = None
+    apollo_cost_per_credit: Optional[float] = None
 
 
 @app.get("/settings")
