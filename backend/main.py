@@ -281,14 +281,11 @@ class SendRequest(BaseModel):
 
 
 def _redirect_for_test(email: dict, user_email: str) -> dict:
-    """Test mode: deliver to the user instead of the contact, marked with who it was meant for."""
-    banner = (f'<p style="color:#888;font-size:11px;border-bottom:1px solid #eee;padding-bottom:8px;margin-bottom:16px">'
-              f'[TEST MODE → would have gone to {email["to"]}]</p>')
+    """Test mode: deliver to the user instead of the contact. Subject and body are left exactly as the
+    contact would see them (the greeting shows who each one was for)."""
     return {
         **email,
         "to": user_email,
-        "subject": f"[TEST → {email['to']}] {email['subject']}",
-        "body": banner + email["body"],
         # BCC stays on so a test also shows the copy arriving in your school inbox
         "test": True,
     }
@@ -352,6 +349,8 @@ def send_emails(req: SendRequest, user=Depends(get_current_user)):
     today = datetime.now(pytz.timezone(my_tz)).date()
     firm_limit = settings.get("firm_daily_limit")
     firm_limit = 3 if firm_limit is None else firm_limit  # 0 turns the safeguard off
+    if test_mode:
+        firm_limit = 0  # every test copy goes to you, so there's no firm to protect; deliver them all now
 
     chosen = [all_contacts[cid] for cid in req.contact_ids
               if cid in all_contacts and all_contacts[cid].get("generated_email") and all_contacts[cid].get("email")
