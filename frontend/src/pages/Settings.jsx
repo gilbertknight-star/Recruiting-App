@@ -284,20 +284,20 @@ export default function Settings() {
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
             <div>
               <label style={lbl}>Font</label>
-              <select value={settings.email_font || 'Arial'} onChange={e => set('email_font', e.target.value)}>
+              <select value={settings.email_font || 'Aptos'} onChange={e => set('email_font', e.target.value)}>
                 {Object.keys(FONT_STACKS).map(f => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
             <div>
               <label style={lbl}>Size</label>
-              <select value={settings.email_font_size || 14} onChange={e => set('email_font_size', Number(e.target.value))}>
-                {[12, 13, 14, 15, 16].map(s => <option key={s} value={s}>{s}px</option>)}
+              <select value={settings.email_font_size || 12} onChange={e => set('email_font_size', Number(e.target.value))}>
+                {[10, 11, 12, 14].map(s => <option key={s} value={s}>{s} pt{s === 12 ? ' (Outlook default)' : ''}</option>)}
               </select>
             </div>
           </div>
           <div style={{
-            background: '#fff', color: '#222', borderRadius: 'var(--radius)', padding: 14,
-            fontFamily: FONT_STACKS[settings.email_font || 'Arial'], fontSize: settings.email_font_size || 14, lineHeight: 1.5,
+            background: '#fff', color: '#000', borderRadius: 'var(--radius)', padding: 14,
+            fontFamily: FONT_STACKS[settings.email_font || 'Aptos'], fontSize: `${settings.email_font_size || 12}pt`, lineHeight: 'normal',
           }}>
             Hello Hannah,<br />My name is Gilbert Knight, and I'm a freshman at the University of Oregon.
           </div>
@@ -329,6 +329,7 @@ const lbl = { display: 'block', color: 'var(--muted)', fontSize: 12, marginBotto
 
 // Keep in sync with FONT_STACKS in backend/email_gen.py
 const FONT_STACKS = {
+  'Aptos': "Aptos, Arial, Helvetica, sans-serif",
   'Arial': "Arial, Helvetica, sans-serif",
   'Times New Roman': "'Times New Roman', Times, serif",
   'Georgia': "Georgia, 'Times New Roman', serif",

@@ -97,6 +97,16 @@ def get_or_create_label(service, label_name: str) -> str:
     return created["id"]
 
 
+def _html_to_text(html: str) -> str:
+    import html as htmllib
+    import re
+    text = re.sub(r"<br\s*/?>", "\n", html)
+    text = re.sub(r"</(p|div)>", "\n\n", text)
+    text = re.sub(r'<a [^>]*href="([^"]+)"[^>]*>([^<]*)</a>', r"\2 (\1)", text)
+    text = htmllib.unescape(re.sub(r"<[^>]+>", "", text))
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def thread_reply_info(service, thread_id: str) -> dict | None:
     """What a reply needs to land in an existing Gmail thread: the last message's Message-ID and the subject."""
     try:
@@ -139,6 +149,8 @@ def send_email(service, to: str, subject: str, body: str, firm: str, attachment_
         msg["In-Reply-To"] = reply_to["message_id"]
         msg["References"] = reply_to["message_id"]
     alt = MIMEMultipart('alternative')
+    # Plain-text version first: mail apps show the HTML, but some spam filters distrust HTML-only email
+    alt.attach(MIMEText(_html_to_text(html_body), "plain"))
     alt.attach(MIMEText(html_body, "html"))
     msg.attach(alt)
 

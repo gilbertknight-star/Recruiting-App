@@ -38,6 +38,7 @@ def build_prompt(contact: dict, template: dict, settings: dict) -> str:
 
 # Font choices offered in Settings, with web-safe fallbacks; Arial matches Gmail's default compose font
 FONT_STACKS = {
+    "Aptos": "Aptos,Arial,Helvetica,sans-serif",
     "Arial": "Arial,Helvetica,sans-serif",
     "Times New Roman": "'Times New Roman',Times,serif",
     "Georgia": "Georgia,'Times New Roman',serif",
@@ -46,13 +47,15 @@ FONT_STACKS = {
     "Verdana": "Verdana,Geneva,sans-serif",
     "Helvetica": "Helvetica,Arial,sans-serif",
 }
-P_STYLE = "margin:0 0 12px 0"
+# Paragraph gap of one line, like pressing Enter twice in Outlook
+P_STYLE = "margin:0 0 1em 0"
 
 
 def body_style(settings: dict) -> str:
-    font = FONT_STACKS.get(settings.get("email_font") or "Arial", FONT_STACKS["Arial"])
-    size = settings.get("email_font_size") or 14
-    return f"font-family:{font};font-size:{size}px;line-height:1.5;color:#222"
+    """Matches how Outlook writes mail: size in points, black text, normal line spacing."""
+    font = FONT_STACKS.get(settings.get("email_font") or "Aptos", FONT_STACKS["Aptos"])
+    size = settings.get("email_font_size") or 12
+    return f"font-family:{font};font-size:{size}pt;line-height:normal;color:#000000"
 
 
 def apply_font(body: str, settings: dict) -> str:
@@ -93,7 +96,7 @@ def append_signature(body: str, settings: dict) -> str:
     sig = clean_signature(settings.get("signature") or "", (settings.get("linkedin_url") or "").strip())
     if not body.strip().startswith('<'):
         body = _plain_to_html(body)
-    sep = '<div style="margin:20px 0 4px 0;color:#888">--</div>'
+    sep = '<div style="margin:1em 0 0 0">--</div>'
     content = f"{body}{sep}{sig}" if sig else body
     return f'<div style="{body_style(settings)}">{content}</div>'
 

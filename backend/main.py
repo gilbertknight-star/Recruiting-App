@@ -276,7 +276,7 @@ def _redirect_for_test(email: dict, user_email: str) -> dict:
         "to": user_email,
         "subject": f"[TEST → {email['to']}] {email['subject']}",
         "body": banner + email["body"],
-        "bcc": None,
+        # BCC stays on so a test also shows the copy arriving in your school inbox
         "test": True,
     }
 
@@ -476,6 +476,7 @@ def send_test_email(req: TestSendRequest, user=Depends(get_current_user)):
         body=apply_font(gcal.fill_availability(req.body, user.id, settings, settings.get("avail_timezone") or "America/Los_Angeles"), settings),
         firm="",
         attachment_paths=[p for p in settings.get("attachments", []) if p],
+        bcc=(settings.get("bcc_email") or "").strip() or None,
     )
     return {"sent_to": recipient}
 

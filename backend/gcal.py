@@ -207,7 +207,7 @@ def _fmt_range(s: datetime, e: datetime) -> str:
     return f"{start}–{end}"
 
 
-P_STYLE = "margin:0 0 12px 0"
+P_STYLE = "margin:0 0 1em 0"  # same paragraph gap as email_gen
 
 
 def format_availability(slots: list[tuple[datetime, datetime]], recipient_tz: str, max_days: int = 4) -> str:
@@ -223,11 +223,11 @@ def format_availability(slots: list[tuple[datetime, datetime]], recipient_tz: st
         return ""
     label = TZ_NAMES.get(recipient_tz, recipient_tz)
     day_lines = "".join(
-        f'<div style="margin:0 0 6px 0">&bull;&nbsp; {d.strftime("%A, %b")} {d.day}: {", ".join(by_day[d])}</div>'
+        f'<div style="margin:0 0 2px 0">&bull;&nbsp; {d.strftime("%A, %b")} {d.day}: {", ".join(by_day[d])}</div>'
         for d in days
     )
     return (f'<p style="{P_STYLE}">Here are some times I\'m free over the next week ({label}):</p>'
-            f'<div style="margin:0 0 12px 12px">{day_lines}</div>'
+            f'<div style="margin:0 0 1em 12px">{day_lines}</div>'
             f'<p style="{P_STYLE}">Happy to work around your schedule if none of these work.</p>')
 
 
