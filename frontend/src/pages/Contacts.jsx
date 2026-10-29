@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { revealContacts, getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings, importRecruitingFolder } from '../api/client'
+import { retierContacts, revealContacts, getContacts, uploadCSV, createContact, generateEmail, sendEmails, patchContact, deleteContact, getSettings, importRecruitingFolder } from '../api/client'
 import TierBadge from '../components/TierBadge'
 import StatusBadge from '../components/StatusBadge'
 import EmailPreview from '../components/EmailPreview'
@@ -7,6 +7,7 @@ import AddContactModal from '../components/AddContactModal'
 import MeetingModal from '../components/MeetingModal'
 import ReviewQueue from '../components/ReviewQueue'
 import SendModal from '../components/SendModal'
+import { useWhenShown } from '../pageShown'
 
 function formatMeeting(startIso, endIso) {
   const s = new Date(startIso)
@@ -45,6 +46,8 @@ export default function Contacts({ side = 'banker' }) {
     loadContacts()
     getSettings().then(s => setTierRules(s?.tier_rules || {})).catch(() => {})
   }, [])
+  // Coming back to this tab keeps your filters and search but picks up contacts added from other tabs
+  useWhenShown(loadContacts)
   useEffect(() => {
     sessionStorage.setItem('contactSelection', JSON.stringify([...selected]))
   }, [selected])
@@ -252,6 +255,22 @@ export default function Contacts({ side = 'banker' }) {
     }
   }
 
+  async function handleRetier() {
+    setLoading(true)
+    try {
+      const { changed } = await retierContacts()
+      const label = { analyst_associate: 'Analyst/Assoc', vp: 'VP/Director', md_partner: 'MD/Partner', n_a: 'N/A' }
+      setMsg(changed.length
+        ? `Updated ${changed.length} tier${changed.length === 1 ? '' : 's'}: ${changed.map(c => `${c.name} → ${label[c.to] || c.to}`).join(', ')}`
+        : 'All tiers already match their titles')
+      setContacts(await getContacts())
+    } catch (e) {
+      setMsg(e.response?.data?.detail || 'Updating tiers failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   function toggleAll() {
     if (selected.size === filtered.length) setSelected(new Set())
     else setSelected(new Set(filtered.map(c => c.id)))
@@ -330,6 +349,11 @@ export default function Contacts({ side = 'banker' }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 20, fontWeight: 600 }}>{side === 'client' ? 'Client Contacts' : 'Contacts'} <span style={{ color: 'var(--muted)', fontSize: 14, fontWeight: 400 }}>({sideContacts.length})</span></h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          {side !== 'client' && (
+            <button className="btn-secondary" onClick={handleRetier} disabled={loading} style={{ fontSize: 13 }} title="Resets each contact's tier from their title. Free, no Apollo credits.">
+              Update Tiers
+            </button>
+          )}
           <button className="btn-secondary" onClick={downloadTemplate} style={{ fontSize: 13 }}>
             ↓ Download Template
           </button>

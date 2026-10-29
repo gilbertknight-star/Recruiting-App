@@ -60,6 +60,7 @@ export const getDealsOverview = () => api.get('/deals/overview').then(r => r.dat
 export const getDealBrief = (id, refresh = false) => api.post(`/deals/${id}/brief`, { refresh }).then(r => r.data)
 export const addDealContacts = (id, people) => api.post(`/deals/${id}/contacts`, { people }).then(r => r.data)
 export const addFoundContacts = (people) => api.post('/contacts/from-apollo', { people }).then(r => r.data)
+export const retierContacts = () => api.post('/contacts/retier').then(r => r.data)
 export const revealContacts =(contactIds) => api.post('/contacts/reveal', { contact_ids: contactIds }).then(r => r.data)
 export const getDealClientTitles = () => api.get('/deals/client-titles').then(r => r.data)
 export const apolloLinkedIn = (url, useCredit = false) => api.post('/apollo/linkedin', { url, use_credit: useCredit }).then(r => r.data)

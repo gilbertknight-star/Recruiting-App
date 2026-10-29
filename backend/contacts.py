@@ -1,5 +1,6 @@
 import csv
 import io
+import re
 import uuid
 from datetime import date, datetime
 from db import supabase, DEV_MODE
@@ -9,6 +10,9 @@ TIER_KEYWORDS = {  # also used by dev_store via import
     "associate": "analyst_associate",
     "vp": "vp",
     "vice president": "vp",
+    "svp": "vp",
+    "evp": "vp",
+    "avp": "vp",
     "director": "vp",
     "n/a": "n_a",
     "md": "md_partner",
@@ -21,12 +25,15 @@ TIER_KEYWORDS = {  # also used by dev_store via import
 STATUS_FLOW = ["Cold", "Contacted", "Replied", "Warm", "Meeting Scheduled", "Referral"]
 
 
+TIER_RANK = ["md_partner", "vp", "n_a", "analyst_associate"]
+
+
 def detect_tier(title: str) -> str:
-    title_lower = title.lower()
-    for keyword, tier in TIER_KEYWORDS.items():
-        if keyword in title_lower:
-            return tier
-    return "analyst_associate"
+    """Most senior match wins, so "Managing Director" is MD/Partner (not VP via "director") and
+    "Associate Vice President" is VP. Keywords match whole words, so "md" doesn't hit inside other words."""
+    words = " " + re.sub(r"[^a-z/]+", " ", title.lower()) + " "
+    matches = {tier for keyword, tier in TIER_KEYWORDS.items() if f" {keyword} " in words}
+    return next((t for t in TIER_RANK if t in matches), "analyst_associate")
 
 
 def get_all_contacts(user_id: str) -> list:

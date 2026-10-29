@@ -983,9 +983,22 @@ class RevealContactsRequest(BaseModel):
     contact_ids: list[str]
 
 
+@app.post("/contacts/retier")
+def retier_contacts(user=Depends(get_current_user)):
+    """Reset every contact's tier from their saved title. Free: no Apollo calls."""
+    changed = []
+    for c in get_all_contacts(user.id):
+        tier = detect_tier(c["title"]) if c.get("title") else None
+        if tier and tier != c.get("tier"):
+            update_contact(user.id, c["id"], {"tier": tier})
+            changed.append({"name": c["name"], "title": c["title"], "from": c.get("tier"), "to": tier})
+    return {"changed": changed}
+
+
 @app.post("/contacts/reveal")
 def reveal_contacts(req: RevealContactsRequest, user=Depends(get_current_user)):
-    """Fill in full name, email and LinkedIn for saved contacts that came from Apollo (1 credit each)."""
+    """Fill in full name, email, LinkedIn and current title for saved contacts that came from Apollo
+    (1 credit each). A new title also resets the tier to match it."""
     contacts = {c["id"]: c for c in get_all_contacts(user.id) if c["id"] in req.contact_ids and c.get("apollo_id")}
     if not contacts:
         raise HTTPException(status_code=400, detail="None of these contacts came from Apollo")
@@ -997,9 +1010,13 @@ def reveal_contacts(req: RevealContactsRequest, user=Depends(get_current_user)):
     for c in contacts.values():
         p = found.get(c["apollo_id"])
         if p:
-            update_contact(user.id, c["id"], {k: v for k, v in {
+            updates = {k: v for k, v in {
                 "name": p["name"], "email": p["email"], "linkedin_url": p["linkedin_url"], "location": p["location"],
-            }.items() if v})
+                "title": p.get("title"),
+            }.items() if v}
+            if updates.get("title"):
+                updates["tier"] = detect_tier(updates["title"])
+            update_contact(user.id, c["id"], updates)
             updated += 1
     return {"updated": updated, "not_found": len(contacts) - updated}
 
